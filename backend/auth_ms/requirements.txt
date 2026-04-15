@@ -1,0 +1,17 @@
+fastapi        
+uvicorn        
+sqlalchemy     
+asyncpg        
+geoalchemy2    
+shapely        
+alembic   
+pydantic 
+pydantic-settings 
+sqlalchemy[asyncio]
+alembic==1.13.1
+sqlalchemy[asyncio]
+pydantic[email]
+python-dotenv
+passlib[bcrypt]
+python-jose[cryptography]
+redis

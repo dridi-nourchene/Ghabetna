@@ -1,0 +1,522 @@
+class Permission(Base):
+    __tablename__ = "permissions"
+
+    perm_id     = Column(UUID(as_uuid=True), primary_key=True,default=uuid.uuid4)
+    name        = Column(String(100), nullable=False, unique=True)
+    description = Column(Text)
+    created_at  = Column(DateTime(timezone=True),server_default=func.now())
+
+    # Relation vers roles (Many-to-Many) 
+    roles = relationship("Role",secondary="role_permissions",back_populates="permissions",)
+
+
+class Role(Base):
+    __tablename__ = "roles"
+
+    role_id      = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name        = Column(String(100), nullable=False, unique=True)
+    created_at  = Column(DateTime(timezone=True ),server_default=func.now())
+    requires_email_activation = Column(Boolean,default=False,nullable=False)
+
+    # Relation vers permissions (Many-to-Many) 
+    permissions = relationship("Permission",secondary="role_permissions",back_populates="roles",)
+
+    # Relation vers users (One-to-Many)
+    users = relationship("User", back_populates="role")
+
+
+#   shemas user 
+# RESPONSE : Rôle simplifié (inclus dans UserResponse)
+class RoleSimple(BaseModel):
+    role_id: UUID
+    name:    str
+
+    model_config = {
+        "from_attributes": True
+        }
+
+
+# user service 
+# ────────────────────────────────────────────────────────────
+# GET USER BY ID
+# ────────────────────────────────────────────────────────────
+async def get_user_by_id(
+    user_id: UUID,
+    db:      AsyncSession,
+) -> User:
+    result = await db.execute(
+        select(User).where(User.user_id == user_id)
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User non trouvé"
+        )
+    return user
+
+
+# ────────────────────────────────────────────────────────────
+# DELETE USER — admin seulement
+# ────────────────────────────────────────────────────────────
+async def delete_user(
+    user_id:      UUID,
+    current_user: User,
+    db:           AsyncSession,
+) -> dict:
+    """
+    Admin ne peut pas supprimer son propre compte
+    """
+
+    # ── Vérifier que c'est l'admin ────────────────────────
+    if current_user.role != UserRole.admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Seul l'admin peut supprimer des comptes"
+        )
+
+    # ── Empêcher l'admin de se supprimer lui-même ────────
+    if current_user.user_id == user_id:
+        raise HTTPException(
+            status_code=400,
+            detail="L'admin ne peut pas supprimer son propre compte"
+        )
+
+    # ── Chercher le user ──────────────────────────────────
+    user = await get_user_by_id(user_id, db)
+
+    await db.delete(user)
+    await db.commit()
+
+    return {"message": f"User {user.full_name} supprimé avec succès"}
+
+
+
+## securiter user 
+from datetime import datetime, timedelta, timezone
+from typing import Optional
+from uuid import UUID
+
+from jose import JWTError, jwt
+from passlib.context import CryptContext
+
+from app.core.config import settings
+
+
+# ────────────────────────────────────────────────────────────
+# BCRYPT — Hash mot de passe
+# ────────────────────────────────────────────────────────────
+# CryptContext gère le hash automatiquement
+# "bcrypt" = algorithme le plus sécurisé pour les mots de passe
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def hash_password(password: str) -> str:
+    """
+    Transforme "MonPassword1!" → "$2b$12$xxx..." ✅
+    Le hash est différent à chaque appel
+    même pour le même mot de passe ✅
+    """
+    return pwd_context.hash(password)
+
+
+def verify_password(plain_password: str,
+                    hashed_password: str) -> bool:
+    """
+    Vérifie si le mot de passe entré correspond au hash en base
+    "MonPassword1!" + "$2b$12$xxx..." → True ✅
+    "MauvaisPass"   + "$2b$12$xxx..." → False ❌
+    """
+    return pwd_context.verify(plain_password, hashed_password)
+
+
+# ────────────────────────────────────────────────────────────
+# ACCESS TOKEN — courte durée (1 heure)
+# ────────────────────────────────────────────────────────────
+def create_access_token(
+    user_id:     UUID,
+    role:        str,
+    permissions: list[str],
+) -> str:
+    """
+    Génère un JWT access token contenant :
+    → user_id, role, permissions, expiration
+    → signé avec JWT_SECRET_KEY ✅
+    → expire après ACCESS_TOKEN_EXPIRE_MINUTES ✅
+    """
+    expire = datetime.now(timezone.utc) + timedelta(
+        minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
+    )
+
+    payload = {
+        "sub":         str(user_id),   # identifiant user
+        "role":        role,           # "admin", "superviseur"...
+        "permissions": permissions,    # ["forest:create", ...]
+        "exp":         expire,         # expiration
+        "type":        "access",       # type du token
+    }
+
+    return jwt.encode(
+        payload,
+        settings.JWT_SECRET_KEY,
+        algorithm=settings.JWT_ALGORITHM,
+    )
+
+
+# ────────────────────────────────────────────────────────────
+# REFRESH TOKEN — longue durée (7 jours)
+# ────────────────────────────────────────────────────────────
+def create_refresh_token(user_id: UUID) -> str:
+    """
+    Génère un JWT refresh token :
+    → contient seulement user_id + expiration
+    → signé avec JWT_REFRESH_SECRET_KEY (clé différente !) ✅
+    → expire après REFRESH_TOKEN_EXPIRE_DAYS ✅
+    """
+    expire = datetime.now(timezone.utc) + timedelta(
+        days=settings.REFRESH_TOKEN_EXPIRE_DAYS
+    )
+
+    payload = {
+        "sub":  str(user_id),
+        "exp":  expire,
+        "type": "refresh",
+    }
+
+    return jwt.encode(
+        payload,
+        settings.JWT_REFRESH_SECRET_KEY,  # clé différente ✅
+        algorithm=settings.JWT_ALGORITHM,
+    )
+
+
+# ────────────────────────────────────────────────────────────
+# VÉRIFICATION ACCESS TOKEN
+# ────────────────────────────────────────────────────────────
+def verify_access_token(token: str) -> Optional[dict]:
+    """
+    Vérifie et décode un access token
+    Retourne le payload si valide ✅
+    Retourne None si invalide ou expiré ❌
+    """
+    try:
+        payload = jwt.decode(
+            token,
+            settings.JWT_SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM],
+        )
+
+        # Vérifie que c'est bien un access token
+        if payload.get("type") != "access":
+            return None
+
+        return payload
+
+    except JWTError:
+        return None
+
+
+# ────────────────────────────────────────────────────────────
+# VÉRIFICATION REFRESH TOKEN
+# ────────────────────────────────────────────────────────────
+def verify_refresh_token(token: str) -> Optional[str]:
+    """
+    Vérifie et décode un refresh token
+    Retourne user_id si valide ✅
+    Retourne None si invalide ou expiré ❌
+    """
+    try:
+        payload = jwt.decode(
+            token,
+            settings.JWT_REFRESH_SECRET_KEY,  # clé différente 
+            algorithms=[settings.JWT_ALGORITHM],
+        )
+
+        if payload.get("type") != "refresh":
+            return None
+
+        return payload.get("sub")  # retourne user_id ✅
+
+    except JWTError:
+        return None
+
+
+# ────────────────────────────────────────────────────────────
+# VÉRIFICATION PERMISSION
+# ────────────────────────────────────────────────────────────
+def has_permission(payload: dict, permission: str) -> bool:
+    """
+    Vérifie si le user a une permission spécifique
+    payload = contenu du JWT décodé
+
+    Exemple :
+    has_permission(payload, "forest:create") → True/False
+    """
+    permissions = payload.get("permissions", [])
+    return permission in permissions
+
+
+## auth service 
+import secrets
+from datetime import datetime, timedelta, timezone
+from uuid import UUID
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+from fastapi import HTTPException
+from app.schemas.user import UserCreate, UserUpdate
+from app.core.security import (verify_password,create_access_token,create_refresh_token,verify_refresh_token,)
+from app.models.user import User, RefreshToken, ActivationToken,UserRole,UserStatus
+from app.schemas.auth import TokenResponse
+
+
+
+async def login(email: str,password: str,db: AsyncSession,) -> TokenResponse:
+
+    # ── Cherche le user avec son rôle et permissions
+    result = await db.execute(
+        select(User)
+        .options(
+            selectinload(User.role)
+            .selectinload("permissions")  # charge les permissions du rôle
+        )
+        .where(User.email == email)
+    )
+    user = result.scalar_one_or_none()
+
+    # ── Vérifie email ─────────────────────────────────────
+    if not user:
+        raise ValueError("Email ou mot de passe incorrect")
+
+    # ── Vérifie mot de passe ──────────────────────────────
+    if not user.password_hash:
+        raise ValueError(
+            "Compte non activé — veuillez vérifier votre email"
+        )
+
+    if not verify_password(password, user.password_hash):
+        raise ValueError("Email ou mot de passe incorrect")
+
+    # ── Vérifie statut du compte ──────────────────────────
+    if user.status == "inactive":
+        raise ValueError(
+            "Compte non activé — veuillez vérifier votre email"
+        )
+
+    if user.status == "banned":
+        raise ValueError("Compte suspendu — contactez l'administrateur")
+
+    # ── Récupère les permissions du rôle ─────────────────
+    permissions = [p.name for p in user.role.permissions]
+
+    # ── Génère les tokens ─────────────────────────────────
+    access_token  = create_access_token(
+        user_id=user.user_id,
+        role=user.role.name,
+        permissions=permissions,
+    )
+    refresh_token = create_refresh_token(user_id=user.user_id)
+
+    # ── Stocke refresh token en base ─────────────────────
+    db_refresh = RefreshToken(
+        user_id    = user.user_id,
+        token      = refresh_token,
+        expires_at = datetime.now(timezone.utc) + timedelta(days=7),
+        revoked    = False,
+    )
+    db.add(db_refresh)
+    await db.commit()
+
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+    )
+
+
+
+# REFRESH TOKEN
+async def refresh_access_token(refresh_token: str,db:AsyncSession,) -> TokenResponse:
+    
+    # ── Vérifie la signature JWT ──────────────────────────
+    user_id = verify_refresh_token(refresh_token)
+    if not user_id:
+        raise ValueError("Refresh token invalide ou expiré")
+
+    # ── Cherche le token en base ──────────────────────────
+    result = await db.execute(
+        select(RefreshToken)
+        .where(RefreshToken.token == refresh_token)
+    )
+    db_token = result.scalar_one_or_none()
+
+    if not db_token:
+        raise ValueError("Refresh token introuvable")
+
+    if db_token.revoked:
+        raise ValueError("Refresh token révoqué — veuillez vous reconnecter")
+
+    if db_token.expires_at < datetime.now(timezone.utc):
+        raise ValueError("Refresh token expiré — veuillez vous reconnecter")
+
+    # ── Charge le user avec rôle + permissions ────────────
+    result = await db.execute(
+        select(User)
+        .options(
+            selectinload(User.role)
+            .selectinload("permissions")
+        )
+        .where(User.user_id == UUID(user_id))
+    )
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise ValueError("Utilisateur introuvable")
+
+    # ── Génère nouveau access token ───────────────────────
+    permissions  = [p.name for p in user.role.permissions]
+    access_token = create_access_token(
+        user_id=user.user_id,
+        role=user.role.name,
+        permissions=permissions,
+    )
+
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,  # même refresh token ✅
+    )
+
+
+# ────────────────────────────────────────────────────────────
+# LOGOUT
+# ────────────────────────────────────────────────────────────
+async def logout(
+    refresh_token: str,
+    db:            AsyncSession,
+) -> None:
+    """
+    Révoque le refresh token en base
+    → token invalide même pas expiré ✅
+    """
+
+    result = await db.execute(
+        select(RefreshToken)
+        .where(RefreshToken.token == refresh_token)
+    )
+    db_token = result.scalar_one_or_none()
+
+    if not db_token:
+        raise ValueError("Token introuvable")
+
+    db_token.revoked = True
+    await db.commit()
+
+
+# ────────────────────────────────────────────────────────────
+# ACTIVATION COMPTE — envoyer le lien
+# ────────────────────────────────────────────────────────────
+async def send_activation_email(
+    user: User,
+    db:   AsyncSession,
+) -> str:
+    """
+    Génère un token d'activation unique
+    Le stocke en base
+    Retourne le token (l'envoi email sera fait dans l'endpoint)
+    Expire après 24h ✅
+    """
+
+    # Génère un token aléatoire sécurisé
+    token = secrets.token_urlsafe(32)
+
+    db_activation = ActivationToken(
+        user_id    = user.user_id,
+        token      = token,
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=24),
+        used       = False,
+    )
+    db.add(db_activation)
+    await db.commit()
+
+    return token
+
+
+# ────────────────────────────────────────────────────────────
+# ACTIVATION COMPTE — valider le lien + set mot de passe
+# ────────────────────────────────────────────────────────────
+async def activate_account(
+    token:        str,
+    new_password: str,
+    db:           AsyncSession,
+) -> None:
+    """
+    1. Cherche le token en base
+    2. Vérifie non utilisé + non expiré
+    3. Hash le mot de passe
+    4. Active le compte
+    5. Marque le token comme utilisé
+    """
+    from app.core.security import hash_password
+
+    # ── Cherche le token ──────────────────────────────────
+    result = await db.execute(
+        select(ActivationToken)
+        .options(selectinload(ActivationToken.user))
+        .where(ActivationToken.token == token)
+    )
+    db_token = result.scalar_one_or_none()
+
+    if not db_token:
+        raise ValueError("Lien d'activation invalide")
+
+    if db_token.used:
+        raise ValueError("Lien déjà utilisé")
+
+    if db_token.expires_at < datetime.now(timezone.utc):
+        raise ValueError("Lien expiré — demandez un nouveau lien")
+
+    # ── Active le compte ──────────────────────────────────
+    user = db_token.user
+    user.password_hash = hash_password(new_password)
+    user.status        = "active"
+
+    # ── Marque le token comme utilisé ────────────────────
+    db_token.used = True
+
+    await db.commit()
+
+
+### main forest 
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from app.core.config import settings
+from app.api.v1.endpoints import forests
+
+
+
+app = FastAPI(title="Forest Service",)
+
+
+# CORS Middleware Autorise Flutter à appeler cette API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+#  Routes 
+app.include_router(forests.router,prefix="/api/v1/forests",tags=["Forests"],)
+
+
+# Health check used by API Gateway pour vérifierque le service est vivant
+@app.get("/health", tags=["Health"])
+async def health():
+    return {
+        "status": "ok",
+        "service": "forest-service",
+        "version": "1.0.0",
+    }
+
+
