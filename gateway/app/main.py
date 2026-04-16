@@ -9,7 +9,7 @@ app = FastAPI(title="Ghabetna — API Gateway", version="1.0.0")
 
 # ── Origins autorisées ────────────────────────────────────
 ALLOWED_ORIGINS = [
-    "http://localhost:8003",    # Flutter Web dev
+    "http://localhost:8080",    # Flutter Web dev
     "http://localhost:3000",    # autre port possible
     "http://127.0.0.1:8080",
     "https://ghabetna.dz",      # production

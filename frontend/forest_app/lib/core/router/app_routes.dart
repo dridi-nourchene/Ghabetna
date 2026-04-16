@@ -1,13 +1,11 @@
-// core/router/app_routes.dart
+// core/router/app_routes.dart  ← VERSION FINALE
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-
 import '../../features/auth/providers/auth_provider.dart';
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/screens/activation_screen.dart';
-
 import '../../features/admin/screens/admin_shell.dart';
 import '../../features/admin/screens/admin_dashboard.dart';
 import '../../features/admin/screens/admin_users_screen.dart';
@@ -17,14 +15,11 @@ import '../../features/admin/screens/admin_edit_user_screen.dart';
 class _PlaceholderScreen extends StatelessWidget {
   final String name;
   const _PlaceholderScreen(this.name);
-
   @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Text(name,
-          style: const TextStyle(fontSize: 18, color: Colors.grey)),
-    );
-  }
+  Widget build(BuildContext context) => Center(
+        child: Text(name,
+            style: const TextStyle(fontSize: 18, color: Colors.grey)),
+      );
 }
 
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -33,23 +28,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: '/login',
 
-    /// ✅ REDIRECT CORRIGÉ
     redirect: (context, state) {
       if (authState.status == AuthStatus.initial) return null;
 
-      final isLoggedIn = authState.isAuthenticated;
+      final isLoggedIn    = authState.isAuthenticated;
+      final isActivatePage = state.matchedLocation.startsWith('/activate');
+      final isLoginPage    = state.matchedLocation == '/login' || isActivatePage;
 
-      /// 🔥 IMPORTANT : utiliser uri.path
-      final isAuthRoute =
-          state.uri.path == '/login' || state.uri.path == '/activate';
+      // /activate est toujours accessible — même si l'admin est connecté
+      // (c'est l'utilisateur nouvellement créé qui active son compte)
+      if (isActivatePage) return null;
 
-      /// 🔓 Non connecté
-      if (!isLoggedIn && !isAuthRoute) {
-        return '/login';
-      }
+      if (!isLoggedIn && !isLoginPage) return '/login';
 
-      /// 🔐 Connecté
-      if (isLoggedIn && isAuthRoute) {
+      if (isLoggedIn && isLoginPage) {
         return switch (authState.role) {
           'admin'      => '/admin/dashboard',
           'supervisor' => '/supervisor/dashboard',
@@ -57,37 +49,22 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           _            => '/login',
         };
       }
-
       return null;
     },
 
     routes: [
-      /// 🔐 LOGIN
       GoRoute(
         path: '/login',
         builder: (_, __) => const LoginScreen(),
       ),
-
-      /// ✅ ACTIVATION (CORRIGÉ)
       GoRoute(
         path: '/activate',
-        builder: (_, state) {
-          final token =
-              Uri.decodeComponent(state.uri.queryParameters['token'] ?? '');
-
-          print("TOKEN ROUTER = $token");
-
-          if (token.isEmpty) {
-            return const Scaffold(
-              body: Center(child: Text("Lien d'activation invalide")),
-            );
-          }
-
-          return ActivationScreen(token: token);
-        },
+        builder: (_, state) => ActivationScreen(
+          token: state.uri.queryParameters['token'] ?? '',
+        ),
       ),
 
-      /// ── ADMIN ─────────────────────────────────
+      // ── ADMIN shell ──────────────────────────────────────────
       ShellRoute(
         builder: (_, __, child) => AdminShell(child: child),
         routes: [
@@ -96,16 +73,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, __) => const AdminDashboard(),
           ),
 
+          // ✅ Liste des utilisateurs
           GoRoute(
             path: '/admin/users',
             builder: (_, __) => const AdminUsersScreen(),
           ),
 
+          // ✅ Créer un utilisateur
+          // IMPORTANT: /new doit être déclaré AVANT /:id
+          // sinon GoRouter traite "new" comme un userId
           GoRoute(
             path: '/admin/users/new',
             builder: (_, __) => const AdminCreateUserScreen(),
           ),
 
+          // ✅ Modifier un utilisateur
           GoRoute(
             path: '/admin/users/:id',
             builder: (_, state) => AdminEditUserScreen(
@@ -132,16 +114,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ],
       ),
 
-      /// ── AUTRES ROLES ─────────────────────────
       GoRoute(
         path: '/supervisor/dashboard',
-        builder: (_, __) =>
-            const _PlaceholderScreen('Supervisor Dashboard'),
+        builder: (_, __) => const _PlaceholderScreen('Supervisor Dashboard'),
       ),
       GoRoute(
         path: '/agent/dashboard',
-        builder: (_, __) =>
-            const _PlaceholderScreen('Agent Dashboard'),
+        builder: (_, __) => const _PlaceholderScreen('Agent Dashboard'),
       ),
     ],
 

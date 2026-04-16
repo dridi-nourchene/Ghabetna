@@ -9,16 +9,15 @@ class LoginScreen extends ConsumerStatefulWidget {
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-// ✅ ConsumerState remplace State
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _emailController    = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword     = true;
 
-  static const _green      = Color(0xFF1F7522);
-  static const _greenLight = Color(0xFFE8F5E9);
-  static const _gray       = Color(0xFF6B7280);
-  static const _border     = Color(0xFFD1D5DB);
+  static const _green  = Color(0xFF1F7522);
+  static const _gray   = Color(0xFF6B7280);
+  static const _border = Color(0xFFCCD0D5);
+  static const _dark   = Color(0xFF1C1E21);
 
   @override
   void dispose() {
@@ -36,16 +35,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return;
     }
 
-    // ✅ ref.read remplace context.read
     await ref.read(authProvider.notifier).login(email, password);
   }
 
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content:          Text(message),
-        backgroundColor:  Colors.red.shade700,
-        behavior:         SnackBarBehavior.floating,
+        content:         Text(message),
+        backgroundColor: Colors.red.shade700,
+        behavior:        SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
         ),
@@ -55,7 +53,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ Écouter les erreurs pour afficher le snackbar
     ref.listen<AuthState>(authProvider, (previous, next) {
       if (next.status == AuthStatus.error && next.error != null) {
         _showError(next.error!);
@@ -130,18 +127,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                   ),
                 ),
-                const Positioned(
-                  bottom: 24, left: 24,
-                  child: Text(
-                    'Votre Vigilance\nfait la différence.',
-                    style: TextStyle(
-                      color:      Colors.white,
-                      fontSize:   22,
-                      fontWeight: FontWeight.w700,
-                      height:     1.3,
-                    ),
-                  ),
-                ),
               ],
             ),
           ),
@@ -154,7 +139,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
-  // ✅ Consumer remplacé par ref directement dans ConsumerState
   Widget _buildForm() {
     final auth = ref.watch(authProvider);
 
@@ -163,41 +147,32 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       mainAxisSize:       MainAxisSize.min,
       children: [
 
-        const SizedBox(height: 32),
+        const SizedBox(height: 6),
 
         const Text(
-          'Connexion',
+          'Connexion à Ghabetna',
           style: TextStyle(
-            fontSize:   28,
+            fontSize:   17,
             fontWeight: FontWeight.w700,
-            color:      Color(0xFF111827),
+            color:      _dark,
           ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Bienvenue sur la plateforme Ghabetna',
-          style: TextStyle(fontSize: 14, color: _gray),
-        ),
-
-        const SizedBox(height: 32),
-
-        _buildLabel('Adresse email'),
-        const SizedBox(height: 6),
-        _buildTextField(
-          controller: _emailController,
-          hint:       'nom@exemple.com',
-          icon:       Icons.email_outlined,
-          keyboard:   TextInputType.emailAddress,
         ),
 
         const SizedBox(height: 20),
 
-        _buildLabel('Mot de passe'),
-        const SizedBox(height: 6),
+        // Champ email — style Facebook (pas de label, pas d'icône)
+        _buildTextField(
+          controller: _emailController,
+          label:       'Adresse email ou numéro de téléphone',
+          keyboard:   TextInputType.emailAddress,
+        ),
+
+        const SizedBox(height: 12),
+
+        // Champ mot de passe
         _buildTextField(
           controller: _passwordController,
-          hint:       '••••••••',
-          icon:       Icons.lock_outline,
+          label:       'Mot de passe',
           obscure:    _obscurePassword,
           suffix: IconButton(
             icon: Icon(
@@ -212,11 +187,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ),
         ),
 
-        const SizedBox(height: 20),
+        const SizedBox(height: 16),
 
+        // Bouton Se connecter
         SizedBox(
           width:  double.infinity,
-          height: 50,
+          height: 36,
           child: ElevatedButton(
             onPressed: auth.isLoading ? null : _handleLogin,
             style: ElevatedButton.styleFrom(
@@ -224,7 +200,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               foregroundColor:         Colors.white,
               disabledBackgroundColor: _green.withOpacity(0.6),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(22),
               ),
               elevation: 0,
             ),
@@ -239,14 +215,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 : const Text(
                     'Se connecter',
                     style: TextStyle(
-                      fontSize:   16,
-                      fontWeight: FontWeight.w600,
+                      fontSize:   14,
+                      fontWeight: FontWeight.normal,
                     ),
                   ),
           ),
         ),
 
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
 
         Center(
           child: TextButton(
@@ -254,8 +230,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             child: const Text(
               'Mot de passe oublié ?',
               style: TextStyle(
-                color:      Color(0xFF1F7522),
+                color:      _green,
                 fontWeight: FontWeight.w500,
+                fontSize:   12,
               ),
             ),
           ),
@@ -290,53 +267,46 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
-  Widget _buildLabel(String text) {
-    return Text(
-      text,
-      style: const TextStyle(
-        fontSize:   14,
-        fontWeight: FontWeight.w500,
-        color:      Color(0xFF374151),
-      ),
-    );
-  }
-
   Widget _buildTextField({
     required TextEditingController controller,
-    required String hint,
-    required IconData icon,
+    required String label,   
     TextInputType keyboard = TextInputType.text,
     bool obscure = false,
     Widget? suffix,
   }) {
-    return TextField(
+    return SizedBox(
+  height: 51, 
+   child: TextField(
       controller:   controller,
       obscureText:  obscure,
       keyboardType: keyboard,
-      style: const TextStyle(fontSize: 15, color: Color(0xFF111827)),
+      style: const TextStyle(fontSize: 15, color: _dark),
       decoration: InputDecoration(
-        hintText:   hint,
-        hintStyle:  TextStyle(color: _gray, fontSize: 14),
-        prefixIcon: Icon(icon, color: _gray, size: 20),
+        labelText:  label,
+        labelStyle: TextStyle(color: _gray, fontSize: 13),
+        floatingLabelStyle: const TextStyle(color: _green, fontSize: 13),
+        floatingLabelBehavior: FloatingLabelBehavior.auto,    
         suffixIcon: suffix,
-        filled:     true,
-        fillColor:  const Color(0xFFF9FAFB),
+        filled:    true,
+        fillColor: Colors.white,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide:   const BorderSide(color: _border),
+          borderRadius: BorderRadius.circular(12),
+          borderSide:   const BorderSide(color: _border, width: 1),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide:   const BorderSide(color: _border),
+          borderRadius: BorderRadius.circular(12),
+          borderSide:   const BorderSide(color: _border, width: 1),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide:   const BorderSide(color: _green, width: 1.5),
+          borderRadius: BorderRadius.circular(12),
+          borderSide:   const BorderSide(color: _green, width: 2),
         ),
         contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16, vertical: 14,
+          horizontal: 14,
+          vertical:   14,
         ),
       ),
+    ),
     );
   }
 }
