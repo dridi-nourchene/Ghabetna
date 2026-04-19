@@ -9,7 +9,7 @@ from app.schemas.forest import (
     ForestsGeoJSONCollection, PaginatedForests,
 )
 from app.services import forest_service
-from app.core.deps import require_admin, get_current_user_id
+from app.core.dependencies import require_admin, get_current_user_id
 
 router = APIRouter(prefix="/api/forests", tags=["Forests"])
 

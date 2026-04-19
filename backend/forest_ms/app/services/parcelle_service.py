@@ -8,7 +8,7 @@ from shapely.geometry import shape, mapping
 from geoalchemy2.shape import to_shape, from_shape
 
 from app.models.forest import Forest
-from app.models.parcelle import Parcelle, ParcelleStatus
+from app.models.parcelle import Parcelle
 from app.schemas.parcelle import (
     ParcelleCreate, ParcelleUpdate,
     ParcelleFeature, ParcellesGeoJSONCollection,
@@ -293,7 +293,7 @@ async def get_parcelles_geojson(
     Retourne les parcelles actives en GeoJSON FeatureCollection.
     Si forest_id fourni → seulement les parcelles de cette forêt.
     """
-    query = select(Parcelle).where(Parcelle.status == ParcelleStatus.active)
+    query = select(Parcelle)
     if forest_id:
         query = query.where(Parcelle.forest_id == forest_id)
 

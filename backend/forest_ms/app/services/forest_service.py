@@ -7,7 +7,7 @@ from typing import Optional
 from shapely.geometry import shape, mapping
 from geoalchemy2.shape import to_shape, from_shape
 
-from app.models.forest import Forest, ForestStatus
+from app.models.forest import Forest
 from app.schemas.forest import (
     ForestCreate, ForestUpdate,
     ForestFeature, ForestsGeoJSONCollection,
@@ -242,7 +242,7 @@ async def get_forests_geojson(
     Consommé directement par flutter_map.
     """
     result = await db.execute(
-        select(Forest).where(Forest.status == ForestStatus.active)
+        select(Forest)
     )
     forests = result.scalars().all()
 
