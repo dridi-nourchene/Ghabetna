@@ -1,3 +1,6 @@
+# backend/forest_ms/app/services/parcelle_service.py
+# FIX : même bug syntaxe SQL que forest_service.py
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, text
 from fastapi import HTTPException
@@ -27,14 +30,14 @@ def _wkb_to_geojson(wkb) -> dict:
 
 def _to_response(p: Parcelle) -> dict:
     return {
-        "id":            p.id,
+        "id":            str(p.id),
         "name":          p.name,
-        "forest_id":     p.forest_id,
+        "forest_id":     str(p.forest_id),
         "geojson":       _wkb_to_geojson(p.geom),
         "area_hectares": p.area_hectares,
         "centroid_lat":  p.centroid_lat,
         "centroid_lng":  p.centroid_lng,
-        "created_by":    p.created_by,
+        "created_by":    str(p.created_by),
         "created_at":    p.created_at,
         "updated_at":    p.updated_at,
     }
@@ -69,18 +72,13 @@ async def _compute_spatial_fields(
     return round(row.area_ha, 2), row.lat, row.lng
 
 
-# ── Validation 1 : parcelle contenue dans sa forêt ────────
+# ── Validation 1 : parcelle dans sa forêt ─────────────────
 
 async def _check_parcelle_within_forest(
     db: AsyncSession,
     geom_wkb,
     forest_id: UUID,
 ) -> None:
-    """
-    La parcelle doit être entièrement contenue dans les
-    bordures de sa forêt parente. ST_Within retourne True
-    seulement si le polygone est 100% à l'intérieur.
-    """
     geom_hex = geom_wkb.desc
 
     result = await db.execute(
@@ -115,14 +113,13 @@ async def _check_parcelle_overlap(
     exclude_id: Optional[UUID] = None,
 ) -> None:
     """
-    Vérifie qu'aucune autre parcelle de la MÊME forêt ne
-    chevauche le polygone donné (chevauchement partiel,
-    containment ou inclusion).
+    FIX : même correction que pour forest_service.
+    Deux requêtes séparées selon exclude_id est None ou non.
     """
     geom_hex = geom_wkb.desc
 
-    result = await db.execute(
-        text("""
+    if exclude_id is None:
+        sql = text("""
             SELECT id, name
             FROM parcelles
             WHERE forest_id = :forest_id::uuid
@@ -131,17 +128,32 @@ async def _check_parcelle_overlap(
                 OR ST_Contains(geom, ST_GeomFromWKB(decode(:geom, 'hex'), 4326))
                 OR ST_Within(geom,  ST_GeomFromWKB(decode(:geom, 'hex'), 4326))
             )
-            AND (:exclude_id IS NULL OR id != :exclude_id::uuid)
             LIMIT 1
-        """),
-        {
+        """)
+        result = await db.execute(sql, {
+            "geom":      geom_hex,
+            "forest_id": str(forest_id),
+        })
+    else:
+        sql = text("""
+            SELECT id, name
+            FROM parcelles
+            WHERE forest_id = :forest_id::uuid
+            AND (
+                ST_Overlaps(geom, ST_GeomFromWKB(decode(:geom, 'hex'), 4326))
+                OR ST_Contains(geom, ST_GeomFromWKB(decode(:geom, 'hex'), 4326))
+                OR ST_Within(geom,  ST_GeomFromWKB(decode(:geom, 'hex'), 4326))
+            )
+            AND id != :exclude_id::uuid
+            LIMIT 1
+        """)
+        result = await db.execute(sql, {
             "geom":       geom_hex,
             "forest_id":  str(forest_id),
-            "exclude_id": str(exclude_id) if exclude_id else None,
-        },
-    )
-    conflict = result.fetchone()
+            "exclude_id": str(exclude_id),
+        })
 
+    conflict = result.fetchone()
     if conflict:
         raise HTTPException(
             status_code=409,
@@ -156,11 +168,6 @@ async def create_parcelle(
     data: ParcelleCreate,
     user_id: UUID,
 ) -> dict:
-    """
-    Crée une parcelle avec deux validations :
-    1. Elle doit être entièrement dans sa forêt parente
-    2. Elle ne doit pas chevaucher une autre parcelle de la même forêt
-    """
     # 1. Forêt existe ?
     forest_result = await db.execute(
         select(Forest).where(Forest.id == data.forest_id)
@@ -171,7 +178,7 @@ async def create_parcelle(
     # 2. GeoJSON → WKB
     geom_wkb = _geojson_to_wkb(data.geojson.model_dump())
 
-    # 3. Validation spatiale
+    # 3. Validations spatiales
     await _check_parcelle_within_forest(db, geom_wkb, data.forest_id)
     await _check_parcelle_overlap(db, geom_wkb, data.forest_id)
 
@@ -211,22 +218,16 @@ async def list_parcelles(
     page_size: int = 20,
     search: Optional[str] = None,
 ) -> tuple[int, list]:
-    """Liste les parcelles. Si forest_id fourni → filtre par forêt."""
-
     query = select(Parcelle)
 
     if forest_id:
         query = query.where(Parcelle.forest_id == forest_id)
-
     if search:
         query = query.where(Parcelle.name.ilike(f"%{search}%"))
 
-
-    # COUNT
     count_query = select(func.count()).select_from(query.subquery())
     total = (await db.execute(count_query)).scalar_one()
 
-    # Pagination
     query = (
         query.order_by(Parcelle.created_at.desc())
              .offset((page - 1) * page_size)
@@ -242,8 +243,6 @@ async def update_parcelle(
     parcelle_id: UUID,
     data: ParcelleUpdate,
 ) -> dict:
-    """Modifie une parcelle. Revalide les contraintes spatiales si polygone change."""
-
     result = await db.execute(
         select(Parcelle).where(Parcelle.id == parcelle_id)
     )
@@ -253,10 +252,9 @@ async def update_parcelle(
 
     if data.geojson is not None:
         geom_wkb = _geojson_to_wkb(data.geojson.model_dump())
-
-        # Revalider : toujours dans la forêt + pas de chevauchement
         await _check_parcelle_within_forest(db, geom_wkb, parcelle.forest_id)
-        await _check_parcelle_overlap(db, geom_wkb, parcelle.forest_id, exclude_id=parcelle_id)
+        await _check_parcelle_overlap(
+            db, geom_wkb, parcelle.forest_id, exclude_id=parcelle_id)
 
         area_ha, centroid_lat, centroid_lng = await _compute_spatial_fields(db, geom_wkb)
         parcelle.geom          = geom_wkb
@@ -264,8 +262,8 @@ async def update_parcelle(
         parcelle.centroid_lat  = centroid_lat
         parcelle.centroid_lng  = centroid_lng
 
-    if data.name   is not None: parcelle.name   = data.name
-    if data.status is not None: parcelle.status = data.status
+    if data.name is not None:
+        parcelle.name = data.name
 
     await db.flush()
     await db.refresh(parcelle)
@@ -290,8 +288,7 @@ async def get_parcelles_geojson(
     forest_id: Optional[UUID] = None,
 ) -> ParcellesGeoJSONCollection:
     """
-    Retourne les parcelles actives en GeoJSON FeatureCollection.
-    Si forest_id fourni → seulement les parcelles de cette forêt.
+    FIX : suppression du filtre Parcelle.status (colonne inexistante).
     """
     query = select(Parcelle)
     if forest_id:

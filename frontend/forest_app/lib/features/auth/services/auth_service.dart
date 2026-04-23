@@ -9,6 +9,9 @@ class AuthService {
 
   // ── Login ────────────────────────────────────────────
   Future<TokenResponse> login(String email, String password) async {
+    if (!email.contains('@') || !email.contains('.')) {
+    throw Exception('Adresse email invalide');
+  }
     final response = await http.post(
       Uri.parse(ApiConstants.loginUrl),
       headers: {'Content-Type': 'application/json'},

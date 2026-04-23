@@ -1,3 +1,6 @@
+# backend/forest_ms/app/services/forest_service.py
+# FIX : syntaxe SQL corrigée — plus de mélange $N / :param
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, func, text
 from fastapi import HTTPException
@@ -29,15 +32,15 @@ def _wkb_to_geojson(wkb) -> dict:
 
 def _to_response(forest: Forest) -> dict:
     return {
-        "id":              forest.id,
-        "name":            forest.name,
-        "geojson":         _wkb_to_geojson(forest.geom),
-        "area_hectares":   forest.area_hectares,
-        "centroid_lat":    forest.centroid_lat,
-        "centroid_lng":    forest.centroid_lng,
-        "created_by":      forest.created_by,
-        "created_at":      forest.created_at,
-        "updated_at":      forest.updated_at,
+        "id":            str(forest.id),
+        "name":          forest.name,
+        "geojson":       _wkb_to_geojson(forest.geom),
+        "area_hectares": forest.area_hectares,
+        "centroid_lat":  forest.centroid_lat,
+        "centroid_lng":  forest.centroid_lng,
+        "created_by":    str(forest.created_by),
+        "created_at":    forest.created_at,
+        "updated_at":    forest.updated_at,
     }
 
 
@@ -49,8 +52,7 @@ async def _compute_spatial_fields(
 ) -> tuple[float, float, float]:
     """
     Calcule aire (hectares) + centroïde via PostGIS.
-    On passe le WKB en hex string car asyncpg ne comprend
-    pas WKBElement directement.
+    FIX : utilise uniquement la syntaxe :param (pas de mélange avec $N)
     """
     geom_hex = geom_wkb.desc
 
@@ -84,34 +86,47 @@ async def _check_forest_overlap(
     exclude_id: Optional[UUID] = None,
 ) -> None:
     """
-    Vérifie qu'aucune forêt existante ne chevauche le polygone donné.
-    ST_Overlaps  → chevauchement partiel
-    ST_Contains  → l'une contient l'autre entièrement
-    ST_Within    → l'une est à l'intérieur de l'autre
+    FIX CRITIQUE : La requête originale mélangeait la syntaxe asyncpg ($1, $2)
+    avec la syntaxe SQLAlchemy (:param). asyncpg voit $2 mais aussi :exclude_id
+    → PostgresSyntaxError.
 
-    On combine les trois pour couvrir tous les cas de collision.
-    On exclut la forêt en cours de modification (exclude_id).
+    Solution : utiliser UNIQUEMENT la syntaxe :param de SQLAlchemy text().
+    Pour le cas NULL, on utilise CASE WHEN au lieu de IS NULL sur un param mixte.
     """
     geom_hex = geom_wkb.desc
 
-    sql = text("""
-        SELECT id, name
-        FROM forests
-        WHERE (
-            ST_Overlaps(geom, ST_GeomFromWKB(decode(:geom, 'hex'), 4326))
-            OR ST_Contains(geom, ST_GeomFromWKB(decode(:geom, 'hex'), 4326))
-            OR ST_Within(geom,  ST_GeomFromWKB(decode(:geom, 'hex'), 4326))
-        )
-        AND (:exclude_id IS NULL OR id != :exclude_id::uuid)
-        LIMIT 1
-    """)
+    if exclude_id is None:
+        # Pas d'exclusion — requête simple
+        sql = text("""
+            SELECT id, name
+            FROM forests
+            WHERE (
+                ST_Overlaps(geom, ST_GeomFromWKB(decode(:geom, 'hex'), 4326))
+                OR ST_Contains(geom, ST_GeomFromWKB(decode(:geom, 'hex'), 4326))
+                OR ST_Within(geom,  ST_GeomFromWKB(decode(:geom, 'hex'), 4326))
+            )
+            LIMIT 1
+        """)
+        result = await db.execute(sql, {"geom": geom_hex})
+    else:
+        # Avec exclusion — on passe l'UUID comme string, cast côté SQL
+        sql = text("""
+            SELECT id, name
+            FROM forests
+            WHERE (
+                ST_Overlaps(geom, ST_GeomFromWKB(decode(:geom, 'hex'), 4326))
+                OR ST_Contains(geom, ST_GeomFromWKB(decode(:geom, 'hex'), 4326))
+                OR ST_Within(geom,  ST_GeomFromWKB(decode(:geom, 'hex'), 4326))
+            )
+            AND id != :exclude_id::uuid
+            LIMIT 1
+        """)
+        result = await db.execute(sql, {
+            "geom":       geom_hex,
+            "exclude_id": str(exclude_id),
+        })
 
-    result = await db.execute(sql, {
-        "geom":       geom_hex,
-        "exclude_id": str(exclude_id) if exclude_id else None,
-    })
     conflict = result.fetchone()
-
     if conflict:
         raise HTTPException(
             status_code=409,
@@ -131,7 +146,7 @@ async def create_forest(
     # 1. GeoJSON → WKB
     geom_wkb = _geojson_to_wkb(data.geojson.model_dump())
 
-    # 2. Validation : pas de chevauchement avec une autre forêt
+    # 2. Validation chevauchement (pas d'exclude_id lors de la création)
     await _check_forest_overlap(db, geom_wkb)
 
     # 3. Calcul aire + centroïde
@@ -176,7 +191,7 @@ async def list_forests(
     if search:
         query = query.where(Forest.name.ilike(f"%{search}%"))
 
-    # COUNT total (sans pagination)
+    # COUNT total
     count_query = select(func.count()).select_from(query.subquery())
     total = (await db.execute(count_query)).scalar_one()
 
@@ -206,7 +221,7 @@ async def update_forest(
     if data.geojson is not None:
         geom_wkb = _geojson_to_wkb(data.geojson.model_dump())
 
-        # Validation : pas de chevauchement (on exclut la forêt elle-même)
+        # FIX : exclude_id passé correctement
         await _check_forest_overlap(db, geom_wkb, exclude_id=forest_id)
 
         area_ha, centroid_lat, centroid_lng = await _compute_spatial_fields(db, geom_wkb)
@@ -215,7 +230,8 @@ async def update_forest(
         forest.centroid_lat  = centroid_lat
         forest.centroid_lng  = centroid_lng
 
-    if data.name            is not None: forest.name            = data.name
+    if data.name is not None:
+        forest.name = data.name
 
     await db.flush()
     await db.refresh(forest)
@@ -238,23 +254,21 @@ async def get_forests_geojson(
     db: AsyncSession,
 ) -> ForestsGeoJSONCollection:
     """
-    Retourne toutes les forêts actives en GeoJSON FeatureCollection.
-    Consommé directement par flutter_map.
+    Retourne toutes les forêts en GeoJSON FeatureCollection.
+    FIX : suppression du filtre Forest.status (colonne inexistante).
     """
-    result = await db.execute(
-        select(Forest)
-    )
+    result = await db.execute(select(Forest))
     forests = result.scalars().all()
 
     features = [
         ForestFeature(
             geometry=_wkb_to_geojson(f.geom),
             properties={
-                "id":              str(f.id),
-                "name":            f.name,
-                "area_hectares":   f.area_hectares,
-                "centroid_lat":    f.centroid_lat,
-                "centroid_lng":    f.centroid_lng,
+                "id":            str(f.id),
+                "name":          f.name,
+                "area_hectares": f.area_hectares,
+                "centroid_lat":  f.centroid_lat,
+                "centroid_lng":  f.centroid_lng,
             },
         )
         for f in forests

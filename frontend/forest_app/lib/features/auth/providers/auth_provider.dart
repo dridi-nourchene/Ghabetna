@@ -1,10 +1,14 @@
+// features/auth/providers/auth_provider.dart
+// FIX : sentinel _keep pour ne pas écraser error par accident
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:forest_app/features/auth/services/auth_service.dart';
 
-// ── Enum Status ───────────────────────────────────────────
 enum AuthStatus { initial, loading, authenticated, unauthenticated, error }
 
-// ── State ─────────────────────────────────────────────────
+// Sentinel — objet unique pour signifier "ne pas toucher à cette valeur"
+const _keep = Object();
+
 class AuthState {
   final AuthStatus status;
   final String?    error;
@@ -16,19 +20,19 @@ class AuthState {
     this.role,
   });
 
-  // FIX: role behaves like error — no ?? fallback.
-  // Passing null explicitly now correctly clears the value.
-  // Before: role: role ?? this.role  → null was ignored, old role persisted after logout.
-  // After:  role: role               → null clears it, just like error does.
+  // FIX : on utilise Object? comme type pour error et role
+  // Si on passe _keep → on garde l'ancienne valeur
+  // Si on passe null  → on efface explicitement
+  // Si on passe une String → on set la nouvelle valeur
   AuthState copyWith({
     AuthStatus? status,
-    String?     error,
-    String?     role,
+    Object?     error = _keep,   // ← sentinel
+    Object?     role  = _keep,   // ← sentinel
   }) {
     return AuthState(
       status: status ?? this.status,
-      error:  error,  // null clears error  ✅
-      role:   role,   // null clears role   ✅ (was: role ?? this.role)
+      error:  error == _keep ? this.error : error as String?,
+      role:   role  == _keep ? this.role  : role  as String?,
     );
   }
 
@@ -36,7 +40,6 @@ class AuthState {
   bool get isAuthenticated => status == AuthStatus.authenticated;
 }
 
-// ── Notifier ──────────────────────────────────────────────
 class AuthNotifier extends StateNotifier<AuthState> {
   final _authService = AuthService();
 
@@ -44,7 +47,6 @@ class AuthNotifier extends StateNotifier<AuthState> {
     _checkExistingSession();
   }
 
-  // ── Vérifier si déjà connecté au démarrage ────────────
   Future<void> _checkExistingSession() async {
     final role = await _authService.getRole();
     if (role != null) {
@@ -57,8 +59,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
-  // ── Login ─────────────────────────────────────────────
   Future<void> login(String email, String password) async {
+    // On passe error: null EXPLICITEMENT pour effacer l'erreur précédente
     state = state.copyWith(status: AuthStatus.loading, error: null);
 
     try {
@@ -67,27 +69,27 @@ class AuthNotifier extends StateNotifier<AuthState> {
       state = state.copyWith(
         status: AuthStatus.authenticated,
         role:   role,
+        error:  null,
       );
     } catch (e) {
+      final msg = e.toString().replaceAll('Exception: ', '');
       state = state.copyWith(
         status: AuthStatus.error,
-        error:  e.toString().replaceAll('Exception: ', ''),
+        error:  msg,   // ← l'erreur est bien stockée
       );
     }
   }
 
-  // ── Logout ────────────────────────────────────────────
   Future<void> logout() async {
     await _authService.logout();
-    // role: null now correctly clears the role thanks to the copyWith fix
     state = state.copyWith(
       status: AuthStatus.unauthenticated,
       role:   null,
+      error:  null,
     );
   }
 }
 
-// ── Provider global ───────────────────────────────────────
 final authProvider = StateNotifierProvider<AuthNotifier, AuthState>(
   (ref) => AuthNotifier(),
 );

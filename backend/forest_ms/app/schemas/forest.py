@@ -43,16 +43,13 @@ class GeoJSONPolygon(BaseModel):
 class ForestCreate(BaseModel):
     name:            str            = Field(..., min_length=2, max_length=255)
     geojson:         GeoJSONPolygon
-    supervisor_cin:  Optional[UUID] = None
-    supervisor_name: Optional[str]  = None
+   
 
 
 # ── UPDATE ────────────────────────────────────────────────
 class ForestUpdate(BaseModel):
     name:            Optional[str]            = Field(None, min_length=2, max_length=255)
     geojson:         Optional[GeoJSONPolygon] = None
-    supervisor_cin:  Optional[UUID]           = None
-    supervisor_name: Optional[str]            = None
 
 
 # ── RESPONSE ──────────────────────────────────────────────
@@ -63,8 +60,6 @@ class ForestResponse(BaseModel):
     area_hectares:   Optional[float]
     centroid_lat:    Optional[float]
     centroid_lng:    Optional[float]
-    supervisor_cin:  Optional[UUID]
-    supervisor_name: Optional[str]
     created_by:      UUID
     created_at:      datetime
     updated_at:      Optional[datetime]
