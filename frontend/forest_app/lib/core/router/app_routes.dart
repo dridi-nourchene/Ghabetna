@@ -27,13 +27,15 @@ class _PlaceholderScreen extends StatelessWidget {
 }
 
 final appRouterProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authProvider);
-
-  return GoRouter(
+  final router = GoRouter(
     initialLocation: '/login',
-
+    refreshListenable: _AuthListenable(ref),
     redirect: (context, state) {
+      final authState = ref.read(authProvider);
+      
       if (authState.status == AuthStatus.initial) return null;
+      if (authState.status == AuthStatus.loading) return null;
+      if (authState.status == AuthStatus.error) return null;
 
       final isLoggedIn     = authState.isAuthenticated;
       final isActivatePage = state.matchedLocation.startsWith('/activate');
@@ -52,6 +54,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       }
       return null;
     },
+
 
     routes: [
       GoRoute(
@@ -155,4 +158,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       body: Center(child: Text('Page introuvable: ${state.error}')),
     ),
   );
+  return router;
 });
+class _AuthListenable extends ChangeNotifier {
+  _AuthListenable(Ref ref) {
+    ref.listen(authProvider, (previous, next) {
+      if (next.status == AuthStatus.authenticated ||
+          next.status == AuthStatus.unauthenticated) {
+        notifyListeners(); // ← GoRouter redirige uniquement sur ces 2 états
+      }
+    });
+  }
+}

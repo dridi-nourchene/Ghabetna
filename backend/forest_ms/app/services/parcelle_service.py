@@ -88,7 +88,7 @@ async def _check_parcelle_within_forest(
                 f.geom
             ) AS is_within
             FROM forests f
-            WHERE f.id = :forest_id::uuid
+            WHERE f.id = CAST(:forest_id AS uuid)
         """),
         {"geom": geom_hex, "forest_id": str(forest_id)},
     )
@@ -122,7 +122,7 @@ async def _check_parcelle_overlap(
         sql = text("""
             SELECT id, name
             FROM parcelles
-            WHERE forest_id = :forest_id::uuid
+            WHERE forest_id  = CAST(:forest_id AS uuid)
             AND (
                 ST_Overlaps(geom, ST_GeomFromWKB(decode(:geom, 'hex'), 4326))
                 OR ST_Contains(geom, ST_GeomFromWKB(decode(:geom, 'hex'), 4326))
@@ -138,13 +138,13 @@ async def _check_parcelle_overlap(
         sql = text("""
             SELECT id, name
             FROM parcelles
-            WHERE forest_id = :forest_id::uuid
+            WHERE forest_id  = CAST(:forest_id AS uuid)
             AND (
                 ST_Overlaps(geom, ST_GeomFromWKB(decode(:geom, 'hex'), 4326))
                 OR ST_Contains(geom, ST_GeomFromWKB(decode(:geom, 'hex'), 4326))
                 OR ST_Within(geom,  ST_GeomFromWKB(decode(:geom, 'hex'), 4326))
             )
-            AND id != :exclude_id::uuid
+            AND id != CAST(:exclude_id AS uuid)
             LIMIT 1
         """)
         result = await db.execute(sql, {

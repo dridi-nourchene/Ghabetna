@@ -1,6 +1,6 @@
 # backend/forest_ms/app/services/forest_service.py
 # FIX : syntaxe SQL corrigée — plus de mélange $N / :param
-
+from starlette.responses import JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, func, text
 from fastapi import HTTPException
@@ -118,7 +118,7 @@ async def _check_forest_overlap(
                 OR ST_Contains(geom, ST_GeomFromWKB(decode(:geom, 'hex'), 4326))
                 OR ST_Within(geom,  ST_GeomFromWKB(decode(:geom, 'hex'), 4326))
             )
-            AND id != :exclude_id::uuid
+            AND id != CAST(:exclude_id AS uuid)
             LIMIT 1
         """)
         result = await db.execute(sql, {

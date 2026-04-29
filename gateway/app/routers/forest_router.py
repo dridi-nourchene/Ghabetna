@@ -1,17 +1,13 @@
 import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 from app.core.config import FOREST_SERVICE_URL
 
 router = APIRouter(tags=["Forests & Parcelles"])
 
 
-async def _proxy(request: Request, url: str) -> JSONResponse:
-    """
-    Proxy générique :
-    - Transfère le body et les query params
-    - Injecte les headers X-User-* depuis le middleware d'auth
-    """
+async def _proxy(request: Request, url: str) -> Response:
     async with httpx.AsyncClient() as client:
         body = await request.body()
 
@@ -30,6 +26,11 @@ async def _proxy(request: Request, url: str) -> JSONResponse:
             content = body,
             params  = request.query_params,
         )
+
+    # ✅ Body vide = 204 No Content (DELETE typiquement)
+    if not response.content:
+        return Response(status_code=response.status_code)
+
 
     return JSONResponse(
         status_code = response.status_code,

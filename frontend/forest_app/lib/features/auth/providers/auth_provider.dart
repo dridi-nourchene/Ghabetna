@@ -1,18 +1,14 @@
 // features/auth/providers/auth_provider.dart
-// FIX : sentinel _keep pour ne pas écraser error par accident
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:forest_app/features/auth/services/auth_service.dart';
 
 enum AuthStatus { initial, loading, authenticated, unauthenticated, error }
 
-// Sentinel — objet unique pour signifier "ne pas toucher à cette valeur"
-const _keep = Object();
-
 class AuthState {
   final AuthStatus status;
-  final String?    error;
-  final String?    role;
+  final String? error;
+  final String? role;
 
   const AuthState({
     this.status = AuthStatus.initial,
@@ -20,72 +16,112 @@ class AuthState {
     this.role,
   });
 
-  // FIX : on utilise Object? comme type pour error et role
-  // Si on passe _keep → on garde l'ancienne valeur
-  // Si on passe null  → on efface explicitement
-  // Si on passe une String → on set la nouvelle valeur
   AuthState copyWith({
     AuthStatus? status,
-    Object?     error = _keep,   // ← sentinel
-    Object?     role  = _keep,   // ← sentinel
+    String? error,
+    bool clearError = false,
+    String? role,
+    bool clearRole = false,
   }) {
     return AuthState(
       status: status ?? this.status,
-      error:  error == _keep ? this.error : error as String?,
-      role:   role  == _keep ? this.role  : role  as String?,
+      error: clearError ? null : (error ?? this.error),
+      role: clearRole ? null : (role ?? this.role),
     );
   }
 
-  bool get isLoading       => status == AuthStatus.loading;
+  bool get isLoading => status == AuthStatus.loading;
   bool get isAuthenticated => status == AuthStatus.authenticated;
 }
 
 class AuthNotifier extends StateNotifier<AuthState> {
-  final _authService = AuthService();
+  final AuthService _authService;
 
-  AuthNotifier() : super(const AuthState()) {
+  AuthNotifier({AuthService? authService})
+      : _authService = authService ?? AuthService(),
+        super(const AuthState()) {
     _checkExistingSession();
   }
 
   Future<void> _checkExistingSession() async {
-    final role = await _authService.getRole();
-    if (role != null) {
-      state = state.copyWith(
-        status: AuthStatus.authenticated,
-        role:   role,
-      );
-    } else {
+    try {
+      final role = await _authService.getRole();
+      if (role != null && role.isNotEmpty) {
+        state = state.copyWith(
+          status: AuthStatus.authenticated,
+          role: role,
+        );
+      } else {
+        state = state.copyWith(status: AuthStatus.unauthenticated);
+      }
+    } catch (e) {
+      print('Check session error: $e');
       state = state.copyWith(status: AuthStatus.unauthenticated);
     }
   }
 
   Future<void> login(String email, String password) async {
-    // On passe error: null EXPLICITEMENT pour effacer l'erreur précédente
-    state = state.copyWith(status: AuthStatus.loading, error: null);
+    print('🔐 AuthNotifier.login - START');
+    
+    // Reset l'état
+    state = state.copyWith(
+      status: AuthStatus.loading,
+      clearError: true,
+      clearRole: true,
+    );
+    print('📊 State set to loading');
 
     try {
       await _authService.login(email, password);
       final role = await _authService.getRole();
+      
+      print('✅ Login successful, role: $role');
       state = state.copyWith(
         status: AuthStatus.authenticated,
-        role:   role,
-        error:  null,
+        role: role,
+        clearError: true,
       );
+      
     } catch (e) {
-      final msg = e.toString().replaceAll('Exception: ', '');
+      // 🔑 GARDER LE MESSAGE ORIGINAL
+      String errorMessage = e.toString();
+      print('❌ Original error caught: $errorMessage');
+      
+      // Enlever 'Exception: ' si présent
+      if (errorMessage.startsWith('Exception: ')) {
+        errorMessage = errorMessage.substring(10);
+      }
+      
+      // Enlever 'Exception:' (sans espace)
+      if (errorMessage.startsWith('Exception:')) {
+        errorMessage = errorMessage.substring(9);
+      }
+      
+      errorMessage = errorMessage.trim();
+      
+      // IMPORTANT: Ne pas remplacer le message!
+      // Si le message est vide, mettre un message par défaut
+      if (errorMessage.isEmpty) {
+        errorMessage = 'Erreur de connexion';
+      }
+      
+      print('📝 Final error message: "$errorMessage"');
+      
       state = state.copyWith(
         status: AuthStatus.error,
-        error:  msg,   // ← l'erreur est bien stockée
+        error: errorMessage,  // ← GARDER LE VRAI MESSAGE
       );
     }
+    
+    print('🔐 AuthNotifier.login - END');
   }
 
   Future<void> logout() async {
     await _authService.logout();
     state = state.copyWith(
       status: AuthStatus.unauthenticated,
-      role:   null,
-      error:  null,
+      clearRole: true,
+      clearError: true,
     );
   }
 }
