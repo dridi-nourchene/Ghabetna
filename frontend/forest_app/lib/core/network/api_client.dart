@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:forest_app/core/constants.dart';
 import 'package:forest_app/core/token_storage.dart';
@@ -40,9 +39,10 @@ class ApiClient {
   }
 
   // ── Gérer 401 → refresh → retry ──────────────────────
+  // Plus de BuildContext — on lance une exception SESSION_EXPIRED
+  // que l'UI intercepte pour rediriger vers /login
   Future<http.Response> _handleResponse(
     Future<http.Response> Function(Map<String, String> headers) request,
-    BuildContext? context,
   ) async {
     var headers  = await _authHeaders();
     var response = await request(headers);
@@ -51,17 +51,10 @@ class ApiClient {
       final newToken = await _tryRefresh();
 
       if (newToken == null) {
-        // refresh expiré → logout forcé
         await _storage.clear();
-        if (context != null && context.mounted) {
-          Navigator.of(context).pushNamedAndRemoveUntil(
-            '/login', (_) => false,
-          );
-        }
-        return response;
+        throw Exception('SESSION_EXPIRED');
       }
 
-      // Rejoue avec nouveau token
       headers  = await _authHeaders();
       response = await request(headers);
     }
@@ -70,24 +63,19 @@ class ApiClient {
   }
 
   // ── GET ───────────────────────────────────────────────
-  Future<http.Response> get(
-    String url, {
-    BuildContext? context,
-  }) async {
+  Future<http.Response> get(String url) async {
     return _handleResponse(
       (headers) => http
           .get(Uri.parse(url), headers: headers)
           .timeout(ApiConstants.requestTimeout),
-      context,
     );
   }
 
   // ── POST ──────────────────────────────────────────────
   Future<http.Response> post(
     String url,
-    Map<String, dynamic> body, {
-    BuildContext? context,
-  }) async {
+    Map<String, dynamic> body,
+  ) async {
     return _handleResponse(
       (headers) => http
           .post(
@@ -96,16 +84,14 @@ class ApiClient {
             body: jsonEncode(body),
           )
           .timeout(ApiConstants.requestTimeout),
-      context,
     );
   }
 
   // ── PUT ───────────────────────────────────────────────
   Future<http.Response> put(
     String url,
-    Map<String, dynamic> body, {
-    BuildContext? context,
-  }) async {
+    Map<String, dynamic> body,
+  ) async {
     return _handleResponse(
       (headers) => http
           .put(
@@ -114,20 +100,15 @@ class ApiClient {
             body: jsonEncode(body),
           )
           .timeout(ApiConstants.requestTimeout),
-      context,
     );
   }
 
   // ── DELETE ────────────────────────────────────────────
-  Future<http.Response> delete(
-    String url, {
-    BuildContext? context,
-  }) async {
+  Future<http.Response> delete(String url) async {
     return _handleResponse(
       (headers) => http
           .delete(Uri.parse(url), headers: headers)
           .timeout(ApiConstants.requestTimeout),
-      context,
     );
   }
 }

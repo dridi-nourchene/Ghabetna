@@ -122,6 +122,7 @@ class AuthService {
     }
   }
 
+  Future<String?> getAccessToken() async => await _storage.getAccessToken();
   // ── Refresh ──────────────────────────────────────────
   Future<String> refreshAccessToken() async {
     final refreshToken = await _storage.getRefreshToken();

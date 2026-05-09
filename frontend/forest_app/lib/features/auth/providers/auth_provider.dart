@@ -1,7 +1,8 @@
 // features/auth/providers/auth_provider.dart
-
+import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:forest_app/features/auth/services/auth_service.dart';
+import 'package:forest_app/core/token_storage.dart';
 
 enum AuthStatus { initial, loading, authenticated, unauthenticated, error }
 
@@ -44,21 +45,53 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> _checkExistingSession() async {
+  final accessToken = await _authService.getAccessToken();
+  final role        = await _authService.getRole();
+
+  if (accessToken == null || role == null) {
+    state = state.copyWith(status: AuthStatus.unauthenticated);
+    return;
+  }
+
+  // Vérifier que le token n'est pas expiré
+  if (_isTokenExpired(accessToken)) {
+    // Tenter un refresh
     try {
-      final role = await _authService.getRole();
-      if (role != null && role.isNotEmpty) {
-        state = state.copyWith(
-          status: AuthStatus.authenticated,
-          role: role,
-        );
-      } else {
-        state = state.copyWith(status: AuthStatus.unauthenticated);
-      }
-    } catch (e) {
-      print('Check session error: $e');
+      await _authService.refreshAccessToken();
+      state = state.copyWith(
+        status: AuthStatus.authenticated,
+        role:   role,
+      );
+    } catch (_) {
+      // Refresh échoué → logout
+      await _authService.logout();
       state = state.copyWith(status: AuthStatus.unauthenticated);
     }
+    return;
   }
+
+  state = state.copyWith(
+    status: AuthStatus.authenticated,
+    role:   role,
+  );
+}
+
+// Decode JWT et vérifier expiration
+bool _isTokenExpired(String token) {
+  try {
+    final parts = token.split('.');
+    if (parts.length != 3) return true;
+    final payload  = parts[1];
+    final normalized = base64Url.normalize(payload);
+    final decoded  = utf8.decode(base64Url.decode(normalized));
+    final data     = jsonDecode(decoded);
+    final exp      = data['exp'] as int?;
+    if (exp == null) return true;
+    return DateTime.now().millisecondsSinceEpoch / 1000 > exp;
+  } catch (_) {
+    return true;
+  }
+}
 
   Future<void> login(String email, String password) async {
     print('🔐 AuthNotifier.login - START');

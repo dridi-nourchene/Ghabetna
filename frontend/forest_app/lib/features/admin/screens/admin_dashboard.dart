@@ -26,7 +26,7 @@ class AdminDashboard extends ConsumerWidget {
                   color: AppColors.textPrimary,
                   letterSpacing: -0.3)),
           const SizedBox(height: 3),
-          const Text('Surveille et gère les forêts algériennes.',
+          const Text('Surveille et gère les forêts tunisiennes.',
               style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
           const SizedBox(height: 20),
 
@@ -59,7 +59,7 @@ class _StatsRow extends StatelessWidget {
             flex: 12,
             child: _StatCard.primary(
               label: 'Utilisateurs actifs',
-              value: '47',
+              value: '1',
               sub: '↑ Augmenté ce mois',
               onTap: () => context.go('/admin/users'),
             ),
@@ -237,10 +237,10 @@ class _BottomRow extends StatelessWidget {
 
 class _UsersCard extends StatelessWidget {
   static const _users = [
-    _UserRow(initials: 'KA', name: 'Karim Amrani',   role: 'Superviseur · Forêt Chréa',    status: UserStatus.active),
-    _UserRow(initials: 'SB', name: 'Sara Benali',    role: 'Agent · Forêt Theniet',         status: UserStatus.pending),
-    _UserRow(initials: 'YM', name: 'Yacine Meziane', role: 'Agent · Forêt Beni-Salah',     status: UserStatus.active),
-    _UserRow(initials: 'NL', name: 'Nadia Lahlou',   role: 'Superviseur · Forêt Akfadou',  status: UserStatus.newUser),
+    _UserRow(initials: 'KA', name: 'arbi Mohamed ',   role: 'Superviseur · Forêt ishkel',    status: UserStatus.active),
+    _UserRow(initials: 'SB', name: '',    role: '',         status: UserStatus.pending),
+    _UserRow(initials: 'YM', name: '', role: '',     status: UserStatus.active),
+    _UserRow(initials: 'NL', name: '',   role: '',  status: UserStatus.newUser),
   ];
 
   @override
@@ -342,22 +342,22 @@ class _AlertsCard extends StatelessWidget {
   static const _alerts = [
     _AlertRow(
       color: AppColors.danger,
-      text: 'Incendie détecté — Partition N3, Chréa',
+      text: 'Incendie détecté ',
       time: 'Il y a 14 min · Agent A12 · Photo jointe',
     ),
     _AlertRow(
       color: AppColors.danger,
-      text: 'Intrusion détectée — Theniet El Had',
-      time: 'Il y a 1h 22min · Capteur IoT',
+      text: '',
+      time: '',
     ),
     _AlertRow(
       color: AppColors.warning,
-      text: 'Température anormale — Beni-Salah Est',
-      time: 'Il y a 3h · Seuil dépassé 42°C',
+      text: '',
+      time: '',
     ),
     _AlertRow(
       color: AppColors.success,
-      text: 'Alerte résolue — Akfadou, Partition S1',
+      text: 'Alerte résolue ',
       time: "Aujourd'hui 09:17 · Clôturée",
     ),
   ];
