@@ -12,8 +12,8 @@ ALLOWED_ORIGINS = [
     "http://localhost:8080",    # Flutter Web dev
     "http://localhost:3000",    # autre port possible
     "http://127.0.0.1:8080",
-    "https://ghabetna.dz",      # production
-    "https://app.ghabetna.dz",  # production
+    "https://ghabetna.tn",      # production
+    "https://app.ghabetna.tn",  # production
 ]
 
 app.add_middleware(

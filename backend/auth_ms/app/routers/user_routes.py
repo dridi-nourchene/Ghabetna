@@ -1,6 +1,5 @@
-# user_service/app/routers/user_router.py
-
 from uuid import UUID
+from backend.auth_ms.app.core.redis_client import get_redis
 from fastapi import APIRouter, BackgroundTasks, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,14 +26,25 @@ async def create_user(
     )
 
 
+ 
 @router.post("/activate", response_model=UserResponse,
              summary="Activer le compte et définir le mot de passe")
 async def activate_account(
-    data: UserActivate,
-    db:   AsyncSession = Depends(get_db),
+    data:  UserActivate,
+    db:    AsyncSession      = Depends(get_db),
+    redis: aioredis.Redis    = Depends(get_redis),
 ):
-    return await user_service.activate_account(data.token, data.password, db)
-
+    """
+    Active le compte utilisateur.
+    Vérifie que Redis est disponible AVANT de committer (spec architecture).
+    Publie l'événement sur stream:user.activated après activation.
+    """
+    return await user_service.activate_account(
+        token=data.token,
+        new_password=data.password,
+        db=db,
+        redis=redis,
+    )
 
 @router.get("/active", response_model=list[UserResponse])
 async def get_active_users(

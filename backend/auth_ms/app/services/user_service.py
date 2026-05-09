@@ -1,14 +1,20 @@
 import secrets
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
-from app.core.email import send_activation_email as send_email
+ 
+import redis.asyncio as aioredis
+from fastapi import BackgroundTasks, HTTPException
 from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from fastapi import BackgroundTasks, HTTPException
+ 
+from app.core.email import send_activation_email as send_email
 from app.core.security import hash_password
 from app.models.user import ActivationToken, User, UserRole, UserStatus
 from app.schemas.user import UserCreate, UserUpdate
+ 
+# ── Nom du stream Redis ───────────────────────────────────────
+STREAM_USER_ACTIVATED = "stream:user.activated"
 
 
 #  ────────────────────────────────────────────────────────────
@@ -81,9 +87,15 @@ async def create_user(
  
  
 # ────────────────────────────────────────────────────────────
-# ACTIVATE ACCOUNT
+# ACTIVATE ACCOUNT — avec Redis ping + xadd
 # ────────────────────────────────────────────────────────────
-async def activate_account(token: str, new_password: str, db: AsyncSession) -> User:
+async def activate_account(
+    token:        str,
+    new_password: str,
+    db:           AsyncSession,
+    redis:        aioredis.Redis,
+) -> User:
+    # 1. Vérifier le token
     result = await db.execute(
         select(ActivationToken)
         .options(selectinload(ActivationToken.user))
@@ -98,6 +110,20 @@ async def activate_account(token: str, new_password: str, db: AsyncSession) -> U
     if db_token.expires_at < datetime.now(timezone.utc):
         raise HTTPException(status_code=400, detail="Lien expiré — demandez un nouveau lien")
  
+    # 2. Vérifier Redis AVANT de committer (spec : si Redis down → refus)
+    try:
+        await redis.ping()
+    except Exception as e:
+        print(f"[REDIS ERROR] Redis indisponible : {e}")
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "message": "Service temporairement indisponible — réessayez dans quelques instants",
+                "retry": True,
+            },
+        )
+ 
+    # 3. Redis OK → activer le compte + publier l'événement
     user               = db_token.user
     user.password_hash = hash_password(new_password)
     user.status        = UserStatus.active
@@ -105,7 +131,27 @@ async def activate_account(token: str, new_password: str, db: AsyncSession) -> U
  
     await db.commit()
     await db.refresh(user)
+ 
+    # 4. Publier sur Redis Stream (après commit DB pour éviter rollback)
+    try:
+        await redis.xadd(
+            STREAM_USER_ACTIVATED,
+            {
+                "user_id":   str(user.user_id),
+                "role":      user.role.value,
+                "nom":       user.full_name,
+                "email":     user.email,
+                "is_active": "true",
+            },
+        )
+        print(f"[REDIS] Événement publié pour {user.email} sur {STREAM_USER_ACTIVATED}")
+    except Exception as e:
+        # Le compte est déjà activé en DB — on log mais on ne rollback pas
+        # (Outbox Pattern sera ajouté plus tard pour couvrir cette fenêtre)
+        print(f"[REDIS ERROR] xadd échoué pour {user.email} : {e}")
+ 
     return user
+ 
  
  
 # ────────────────────────────────────────────────────────────

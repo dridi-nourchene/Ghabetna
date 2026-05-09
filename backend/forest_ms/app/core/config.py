@@ -6,7 +6,10 @@ class Settings(BaseSettings):
     SECRET_KEY:   str = "dev-secret-key"
     PORT:         int = 8002
 
-    model_config = {"env_file": ".env"}
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: int = 6379
+
+    model_config = {"env_file": ".env", "extra": "ignore"}
 
 
 settings = Settings()
