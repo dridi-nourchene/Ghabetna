@@ -325,6 +325,13 @@ class _Sidebar extends StatelessWidget {
                   expanded:        expanded,
                 ),
                 _SidebarItem(
+                  icon:            Icons.map_outlined,
+                  label:           'Carte & Alertes',
+                  route:           '/admin/map',
+                  currentLocation: location,
+                  expanded:        expanded,
+                ),
+                _SidebarItem(
                   icon:            Icons.people_outline,
                   label:           'Utilisateurs',
                   route:           '/admin/users',

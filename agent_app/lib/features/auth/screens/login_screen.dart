@@ -28,8 +28,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     final ok = await ref.read(authProvider.notifier).login(
-          email:    _emailController.text.trim(),
-          password: _passwordController.text,
+          _emailController.text.trim(),
+          _passwordController.text,
         );
 
     if (ok && mounted) context.go('/home');
@@ -38,7 +38,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final auth      = ref.watch(authProvider);
-    final isLoading = auth.status == AuthStatus.loading;
+    final isLoading = auth.isLoading;
 
     // Rediriger si déjà connecté
     ref.listen<AuthState>(authProvider, (_, next) {
@@ -153,8 +153,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       const _FieldLabel('Mot de passe'),
                       const SizedBox(height: 6),
                       TextFormField(
-                        controller:     _passwordController,
-                        obscureText:    _obscurePassword,
+                        controller:  _passwordController,
+                        obscureText: _obscurePassword,
                         style: const TextStyle(
                             fontSize: 14,
                             color:    AgentColors.textPrimary),
@@ -185,7 +185,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         },
                       ),
 
-                      // Erreur API
+                      // ── Erreur API ─────────────────────────
                       if (auth.errorMessage != null) ...[
                         const SizedBox(height: 14),
                         Container(
@@ -216,7 +216,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                       const SizedBox(height: 24),
 
-                      // Bouton connexion
+                      // ── Bouton connexion ───────────────────
                       SizedBox(
                         width:  double.infinity,
                         height: 52,
@@ -269,16 +269,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   InputDecoration _inputDecoration({
-    required String  hint,
+    required String   hint,
     required IconData icon,
   }) =>
       InputDecoration(
-        hintText:    hint,
-        hintStyle:   const TextStyle(
+        hintText:   hint,
+        hintStyle:  const TextStyle(
             fontSize: 14, color: AgentColors.textMuted),
-        prefixIcon:  Icon(icon, size: 18, color: AgentColors.textMuted),
-        filled:      true,
-        fillColor:   const Color(0xFFF5F7F5),
+        prefixIcon: Icon(icon, size: 18, color: AgentColors.textMuted),
+        filled:     true,
+        fillColor:  const Color(0xFFF5F7F5),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide:

@@ -35,14 +35,16 @@ class HomeScreen extends ConsumerWidget {
                   children: [
                     const Text('Ghabetna',
                         style: TextStyle(
-                            fontSize:   20,
-                            fontWeight: FontWeight.w700,
-                            color:      AgentColors.textPrimary,
+                            fontSize:      20,
+                            fontWeight:    FontWeight.w700,
+                            color:         AgentColors.textPrimary,
                             letterSpacing: -0.3)),
-                    Text('Agent · ${auth.email ?? ''}',
-                        style: const TextStyle(
-                            fontSize: 12,
-                            color:    AgentColors.textMuted)),
+                    Text(
+                      'Agent · ${auth.email ?? ''}',
+                      style: const TextStyle(
+                          fontSize: 12,
+                          color:    AgentColors.textMuted),
+                    ),
                   ],
                 ),
                 const Spacer(),
@@ -74,24 +76,24 @@ class HomeScreen extends ConsumerWidget {
 
               // ── Carte Déclarer une alerte ───────────────
               _ActionCard(
-                icon:        Icons.warning_amber_rounded,
-                iconColor:   const Color(0xFFE05C2A),
-                iconBg:      const Color(0xFFFFF0EA),
-                title:       'Déclarer une alerte',
-                subtitle:    'Signaler un incendie, vol ou autre incident',
-                onTap:       () => context.go('/create-alert'),
+                icon:      Icons.warning_amber_rounded,
+                iconColor: const Color(0xFFE05C2A),
+                iconBg:    const Color(0xFFFFF0EA),
+                title:     'Déclarer une alerte',
+                subtitle:  'Signaler un incendie, vol ou autre incident',
+                onTap:     () => context.go('/create-alert'),
               ),
 
               const SizedBox(height: 16),
 
               // ── Carte Mes alertes ───────────────────────
               _ActionCard(
-                icon:        Icons.list_alt_rounded,
-                iconColor:   AgentColors.primary,
-                iconBg:      AgentColors.primaryLight,
-                title:       'Mes alertes',
-                subtitle:    'Consulter l\'historique de vos signalements',
-                onTap:       () => context.go('/my-alerts'),
+                icon:      Icons.list_alt_rounded,
+                iconColor: AgentColors.primary,
+                iconBg:    AgentColors.primaryLight,
+                title:     'Mes alertes',
+                subtitle:  'Consulter l\'historique de vos signalements',
+                onTap:     () => context.go('/my-alerts'),
               ),
 
               const Spacer(),

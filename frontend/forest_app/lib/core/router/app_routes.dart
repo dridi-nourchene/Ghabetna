@@ -16,6 +16,7 @@ import '../../features/admin/screens/admin_create_forest_screen.dart';
 import '../../features/admin/screens/admin_edit_forest_screen.dart';
 import '../../features/admin/screens/admin_create_parcelle_screen.dart';
 import '../../features/admin/screens/admin_assign_agents_screen.dart';
+import '../../features/admin/screens/admin_map_screen.dart';
 import '../../features/admin/screens/admin_assign_superviseurs_screen.dart';
 
 class _PlaceholderScreen extends StatelessWidget {
@@ -124,6 +125,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, state) => AdminCreateParcelleScreen(
               forestId: state.pathParameters['forestId']!,
             ),
+          ),
+
+          GoRoute(
+            path:    '/admin/map',
+            builder: (_, __) => const AdminMapScreen(),
           ),
 
           // ── Affectations ─────────────────────────────────────

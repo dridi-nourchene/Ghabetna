@@ -2,7 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:agent_app/core/router/app_routes.dart';
+import 'package:agent_app/core/router/app_routers.dart';
 
 void main() {
   runApp(const ProviderScope(child: AgentApp()));
