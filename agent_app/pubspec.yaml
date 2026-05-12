@@ -1,0 +1,40 @@
+name: agent_app
+description: Ghabetna — Application mobile agent DGF
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State management
+  flutter_riverpod: ^2.5.1
+
+  # Navigation
+  go_router: ^14.0.0
+
+  # HTTP
+  http: ^1.2.1
+  http_parser: ^4.0.2
+
+  # Stockage sécurisé (token JWT)
+  flutter_secure_storage: ^9.0.0
+  shared_preferences: ^2.2.3
+
+  # Image
+  image_picker: ^1.1.2      # caméra + galerie
+  exif: ^3.1.4              # extraction GPS depuis EXIF
+
+  # Permissions
+  permission_handler: ^11.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

@@ -180,7 +180,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
         Center(
           child: Text(
-            '© 2025 Ghabetna — Ministère de l\'Agriculture',
+            '© 2026 Ghabetna — Ministère de l\'Agriculture',
             style: TextStyle(color: _gray, fontSize: 11),
           ),
         ),
