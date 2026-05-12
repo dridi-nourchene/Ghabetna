@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.forest import Forest
 from app.models.parcelle import Parcelle
-from app.models.user_cache import UserCache
+from app.models.user_cahe import UserCache
 from app.models.agent_parcelle import AgentParcelle
 
 
@@ -81,7 +81,6 @@ async def assign_superviseur(
     # Affecter (upsert simple — on remplace)
     forest.superviseur_id = superviseur_id
     await db.commit()
-    await db.refresh(forest)
 
     return await get_forest_with_superviseur(db, forest_id)
 
@@ -135,53 +134,61 @@ async def assign_agent(
     parcelle_id: UUID,
     agent_id:    UUID,
 ) -> dict:
-    """
-    Affecte un agent à une parcelle.
-    Contrainte : agent_id PK → un agent ne peut avoir qu'une seule affectation.
-    Si l'agent est déjà affecté ailleurs → retourne l'info pour l'UI (conflict).
-    """
-    # Vérifier agent dans le cache
-    await _get_user_from_cache(db, agent_id, "agent")
-
-    # Vérifier parcelle
+    # Vérifier agent + parcelle — on récupère les objets AVANT le commit
+    agent    = await _get_user_from_cache(db, agent_id, "agent")
     parcelle = await _get_parcelle(db, parcelle_id)
 
-    # Vérifier si l'agent est déjà affecté (PK constraint)
+    # Vérifier si déjà affecté
     existing = await db.execute(
         select(AgentParcelle).where(AgentParcelle.agent_id == agent_id)
     )
     existing_assignment = existing.scalar_one_or_none()
 
     if existing_assignment:
-        # L'agent est déjà affecté → retourner l'info pour l'UI
         old_parcelle = await _get_parcelle(db, existing_assignment.parcelle_id)
         return {
-            "conflict": True,
-            "agent_id": str(agent_id),
+            "conflict":              True,
+            "agent_id":              str(agent_id),
             "current_parcelle_id":   str(existing_assignment.parcelle_id),
             "current_parcelle_name": old_parcelle.name,
             "message": f"L'agent est déjà affecté à la parcelle « {old_parcelle.name} »",
         }
 
-    # Nouvelle affectation
-    db.add(AgentParcelle(
-        agent_id    = agent_id,
-        parcelle_id = parcelle_id,
-    ))
+    # Collecter les données de réponse AVANT le commit
+    agent_nom   = agent.nom
+    agent_email = agent.email
+    agent_phone = agent.phone or ""
+    parc_name   = parcelle.name
+
+    # Commit
+    db.add(AgentParcelle(agent_id=agent_id, parcelle_id=parcelle_id))
     await db.commit()
 
-    return await _agent_assignment_response(db, agent_id, parcelle_id)
-
+    # Retourner avec les données déjà collectées — pas de query après commit
+    return {
+        "conflict":      False,
+        "agent_id":      str(agent_id),
+        "agent_nom":     agent_nom,
+        "agent_email":   agent_email,
+        "agent_phone":   agent_phone,
+        "parcelle_id":   str(parcelle_id),
+        "parcelle_name": parc_name,
+    }
 
 async def reassign_agent(
     db:          AsyncSession,
     parcelle_id: UUID,
     agent_id:    UUID,
 ) -> dict:
-    await _get_user_from_cache(db, agent_id, "agent")
-    await _get_parcelle(db, parcelle_id)
+    # Collecter AVANT le commit
+    agent    = await _get_user_from_cache(db, agent_id, "agent")
+    parcelle = await _get_parcelle(db, parcelle_id)
 
-    # Chercher l'affectation existante
+    agent_nom   = agent.nom
+    agent_email = agent.email
+    agent_phone = agent.phone or ""
+    parc_name   = parcelle.name
+
     result = await db.execute(
         select(AgentParcelle).where(AgentParcelle.agent_id == agent_id)
     )
@@ -193,7 +200,16 @@ async def reassign_agent(
         db.add(AgentParcelle(agent_id=agent_id, parcelle_id=parcelle_id))
 
     await db.commit()
-    return await _agent_assignment_response(db, agent_id, parcelle_id)
+
+    return {
+        "conflict":      False,
+        "agent_id":      str(agent_id),
+        "agent_nom":     agent_nom,
+        "agent_email":   agent_email,
+        "agent_phone":   agent_phone,
+        "parcelle_id":   str(parcelle_id),
+        "parcelle_name": parc_name,
+    }
 
 
 async def remove_agent(db: AsyncSession, agent_id: UUID) -> dict:

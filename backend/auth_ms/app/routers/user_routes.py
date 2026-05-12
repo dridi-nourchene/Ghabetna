@@ -1,8 +1,8 @@
 from uuid import UUID
-from backend.auth_ms.app.core.redis_client import get_redis
+from app.core.redis_client import get_redis
 from fastapi import APIRouter, BackgroundTasks, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-
+import redis.asyncio as aioredis
 from app.core.dependencies import require_admin
 from app.db.database import get_db
 from app.models.user import User

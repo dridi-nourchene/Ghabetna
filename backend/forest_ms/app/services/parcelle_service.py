@@ -196,7 +196,7 @@ async def create_parcelle(
         created_by=user_id,
     )
     db.add(parcelle)
-    await db.flush()
+    await db.commit() 
     await db.refresh(parcelle)
     return _to_response(parcelle)
 
@@ -265,7 +265,7 @@ async def update_parcelle(
     if data.name is not None:
         parcelle.name = data.name
 
-    await db.flush()
+    await db.commit()
     await db.refresh(parcelle)
     return _to_response(parcelle)
 
@@ -278,7 +278,7 @@ async def delete_parcelle(db: AsyncSession, parcelle_id: UUID) -> None:
     if not parcelle:
         raise HTTPException(status_code=404, detail="Parcelle introuvable")
     await db.delete(parcelle)
-    await db.flush()
+    await db.commit()
 
 
 # ── GeoJSON FeatureCollection ─────────────────────────────

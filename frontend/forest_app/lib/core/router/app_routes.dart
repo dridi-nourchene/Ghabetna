@@ -1,4 +1,4 @@
-// core/router/app_routes.dart — VERSION AVEC FORESTS
+// core/router/app_routes.dart
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,6 +15,8 @@ import '../../features/admin/screens/admin_forests_screen.dart';
 import '../../features/admin/screens/admin_create_forest_screen.dart';
 import '../../features/admin/screens/admin_edit_forest_screen.dart';
 import '../../features/admin/screens/admin_create_parcelle_screen.dart';
+import '../../features/admin/screens/admin_assign_agents_screen.dart';
+import '../../features/admin/screens/admin_assign_superviseurs_screen.dart';
 
 class _PlaceholderScreen extends StatelessWidget {
   final String name;
@@ -32,10 +34,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     refreshListenable: _AuthListenable(ref),
     redirect: (context, state) {
       final authState = ref.read(authProvider);
-      
-      if (authState.status == AuthStatus.initial) return null;
-      if (authState.status == AuthStatus.loading) return null;
-      if (authState.status == AuthStatus.error) return null;
+
+      if (authState.status == AuthStatus.initial)  return null;
+      if (authState.status == AuthStatus.loading)  return null;
+      if (authState.status == AuthStatus.error)    return null;
 
       final isLoggedIn     = authState.isAuthenticated;
       final isActivatePage = state.matchedLocation.startsWith('/activate');
@@ -55,101 +57,107 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       return null;
     },
 
-
     routes: [
       GoRoute(
-        path: '/login',
+        path:    '/login',
         builder: (_, __) => const LoginScreen(),
       ),
       GoRoute(
-        path: '/activate',
+        path:    '/activate',
         builder: (_, state) => ActivationScreen(
           token: state.uri.queryParameters['token'] ?? '',
         ),
       ),
 
-      // ── ADMIN shell ───────────────────────────────────────────
+      // ── ADMIN shell ──────────────────────────────────────────
       ShellRoute(
         builder: (_, __, child) => AdminShell(child: child),
         routes: [
+
+          // Dashboard
           GoRoute(
-            path: '/admin/dashboard',
+            path:    '/admin/dashboard',
             builder: (_, __) => const AdminDashboard(),
           ),
 
-          // ── Users ──────────────────────────────────────────────
+          // ── Users ────────────────────────────────────────────
           GoRoute(
-            path: '/admin/users',
+            path:    '/admin/users',
             builder: (_, __) => const AdminUsersScreen(),
           ),
           GoRoute(
-            path: '/admin/users/new',
+            path:    '/admin/users/new',
             builder: (_, __) => const AdminCreateUserScreen(),
           ),
           GoRoute(
-            path: '/admin/users/:id',
+            path:    '/admin/users/:id',
             builder: (_, state) => AdminEditUserScreen(
               userId: state.pathParameters['id']!,
             ),
           ),
 
-          // ── Forests ────────────────────────────────────────────
-          // IMPORTANT: /new et /geojson AVANT /:id pour que GoRouter
-          // ne les traite pas comme des forest IDs
+          // ── Forests ──────────────────────────────────────────
           GoRoute(
-            path: '/admin/forests',
+            path:    '/admin/forests',
             builder: (_, __) => const AdminForestsScreen(),
           ),
           GoRoute(
-            path: '/admin/forests/new',
+            path:    '/admin/forests/new',
             builder: (_, __) => const AdminCreateForestScreen(),
           ),
           GoRoute(
-            path: '/admin/forests/:forestId/edit',
+            path:    '/admin/forests/:forestId/edit',
             builder: (_, state) => AdminEditForestScreen(
               forestId: state.pathParameters['forestId']!,
             ),
           ),
 
-          // ── Parcelles ──────────────────────────────────────────
+          // ── Parcelles ────────────────────────────────────────
           GoRoute(
-            path: '/admin/forests/:forestId/parcelles/new',
+            path:    '/admin/forests/:forestId/parcelles/new',
             builder: (_, state) => AdminCreateParcelleScreen(
               forestId: state.pathParameters['forestId']!,
             ),
           ),
-          // Edit parcelle — uses same drawing screen, adapt as needed
           GoRoute(
-            path: '/admin/forests/:forestId/parcelles/:parcelleId/edit',
+            path:    '/admin/forests/:forestId/parcelles/:parcelleId/edit',
             builder: (_, state) => AdminCreateParcelleScreen(
               forestId: state.pathParameters['forestId']!,
-              // NOTE: pour l'édition, vous pourrez passer aussi parcelleId
-              // et réutiliser le même widget en mode "edit"
             ),
           ),
 
-          // ── Other pages ────────────────────────────────────────
+          // ── Affectations ─────────────────────────────────────
           GoRoute(
-            path: '/admin/alerts',
+            path:    '/admin/assign/agents',
+            builder: (_, __) => const AdminAssignAgentsScreen(),
+          ),
+          GoRoute(
+            path:    '/admin/assign/superviseurs',
+            builder: (_, __) => const AdminAssignSuperveursScreen(),
+          ),
+
+          // ── Autres ───────────────────────────────────────────
+          GoRoute(
+            path:    '/admin/alerts',
             builder: (_, __) => const _PlaceholderScreen('Alertes'),
           ),
           GoRoute(
-            path: '/admin/reports',
+            path:    '/admin/reports',
             builder: (_, __) => const _PlaceholderScreen('Rapports'),
           ),
           GoRoute(
-            path: '/admin/settings',
+            path:    '/admin/settings',
             builder: (_, __) => const _PlaceholderScreen('Paramètres'),
           ),
         ],
       ),
 
       GoRoute(
-        path: '/supervisor/dashboard',
+        path:    '/supervisor/dashboard',
         builder: (_, __) => const _PlaceholderScreen('Supervisor Dashboard'),
       ),
       GoRoute(
-        path: '/agent/dashboard',
+        path:    '/agent/dashboard',
         builder: (_, __) => const _PlaceholderScreen('Agent Dashboard'),
       ),
     ],
@@ -160,12 +168,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   );
   return router;
 });
+
 class _AuthListenable extends ChangeNotifier {
   _AuthListenable(Ref ref) {
     ref.listen(authProvider, (previous, next) {
       if (next.status == AuthStatus.authenticated ||
           next.status == AuthStatus.unauthenticated) {
-        notifyListeners(); // ← GoRouter redirige uniquement sur ces 2 états
+        notifyListeners();
       }
     });
   }

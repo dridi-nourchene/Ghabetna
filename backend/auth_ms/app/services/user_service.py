@@ -141,6 +141,7 @@ async def activate_account(
                 "role":      user.role.value,
                 "nom":       user.full_name,
                 "email":     user.email,
+                "phone":     user.phone or "",
                 "is_active": "true",
             },
         )

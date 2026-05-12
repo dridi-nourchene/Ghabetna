@@ -4,15 +4,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.db.database import engine, Base, AsyncSessionLocal
-from app.routers import forest_router, parcelle_router
-from app.routers.assignment_router import router as assignment_router
+from app.routers import forest_router, parcelle_router, assignment_router
 from app.core.redis_client import get_redis, close_redis
 from app.consumers.user_consumer import run_user_consumer
 
 import app.models.forest         
 import app.models.parcelle       
-import app.models.user_cache     
-import app.models.agent_parcelle #
+import app.models.user_cahe     
+import app.models.agent_parcelle 
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -55,7 +54,7 @@ app.add_middleware(
 # ── Routers ───────────────────────────────────────────────────
 app.include_router(forest_router.router)
 app.include_router(parcelle_router.router)
-app.include_router(assignment_router)
+app.include_router(assignment_router.router)
 
 
 # ── Lifecycle ─────────────────────────────────────────────────

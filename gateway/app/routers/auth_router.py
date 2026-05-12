@@ -19,7 +19,7 @@ class LogoutRequest(BaseModel):
 
 # ── Proxy générique ───────────────────────────────────────
 async def _proxy(request: Request, url: str, body: dict) -> JSONResponse:
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=90.0) as client:
         response = await client.request(
             method  = request.method,
             url     = url,

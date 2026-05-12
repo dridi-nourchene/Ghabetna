@@ -26,21 +26,19 @@ class Forest(Base):
     centroid_lat  = Column(Float, nullable=True)
     centroid_lng  = Column(Float, nullable=True)
 
-    # ── Superviseur — référence externe (pas de FK cross-service) ──
+     # ── Superviseur — référence externe (pas de FK cross-service) ──
     superviseur_id = Column(UUID(as_uuid=True), nullable=True)
 
     created_by = Column(UUID(as_uuid=True), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
 
-        # ── Relations ─────────────────────────────────────────
-    forest = relationship("Forest", back_populates="parcelles")
-    agents = relationship(
-        "AgentParcelle",
-        back_populates="parcelle",
+    # ── Relation vers Parcelles ───────────────────────────
+    parcelles = relationship(
+        "Parcelle",
+        back_populates="forest",
         cascade="all, delete-orphan",
     )
- 
 
     def __repr__(self):
         return f"<Forest {self.name} >"

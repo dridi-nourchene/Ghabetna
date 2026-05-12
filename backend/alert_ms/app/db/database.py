@@ -16,7 +16,7 @@ class Base(DeclarativeBase):
 async def get_db() -> AsyncSession:
     async with AsyncSessionLocal() as session:
         try:
-            yield session          # ← pas de session.begin() ici
+            yield session         
         except Exception:
             await session.rollback()
             raise

@@ -33,6 +33,11 @@ class Parcelle(Base):
 
     # ── Relation vers Forest ──────────────────────────────
     forest = relationship("Forest", back_populates="parcelles")
+    agents = relationship(
+        "AgentParcelle",
+        back_populates="parcelle",
+        cascade="all, delete-orphan",
+    )
 
     def __repr__(self):
         return f"<Parcelle {self.name} — forêt {self.forest_id}>"

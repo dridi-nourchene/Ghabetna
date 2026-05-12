@@ -162,7 +162,7 @@ async def create_forest(
         created_by=user_id,
     )
     db.add(forest)
-    await db.flush()
+    await db.commit()
     await db.refresh(forest)
     return _to_response(forest)
 
@@ -233,7 +233,7 @@ async def update_forest(
     if data.name is not None:
         forest.name = data.name
 
-    await db.flush()
+    await db.commit()  
     await db.refresh(forest)
     return _to_response(forest)
 
@@ -245,7 +245,7 @@ async def delete_forest(db: AsyncSession, forest_id: UUID) -> None:
     if not forest:
         raise HTTPException(status_code=404, detail="Forêt introuvable")
     await db.delete(forest)
-    await db.flush()
+    await db.commit()  
 
 
 # ── GeoJSON FeatureCollection ─────────────────────────────

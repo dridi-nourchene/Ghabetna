@@ -10,8 +10,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 # ── Importer les DEUX modèles ─────────────────────────────
 # L'ordre est important : Forest d'abord (Parcelle dépend de Forest via FK)
-from app.models.forest import Forest       
-from app.models.parcelle import Parcelle   
+from app.models.alert import Alert  
 from app.db.database import Base
 
 # ── GeoAlchemy2 — nécessaire pour que Alembic reconnaisse
@@ -34,7 +33,7 @@ def get_url() -> str:
     """
     url = os.getenv(
         "DATABASE_URL_SYNC",
-        "postgresql+psycopg2://postgres:master@localhost:5432/forest_db",
+        "postgresql+psycopg2://postgres:master@localhost:5432/alert_db",
     )
     # Sécurité : si quelqu'un passe l'URL asyncpg, on corrige
     return url.replace("postgresql+asyncpg://", "postgresql+psycopg2://")
