@@ -17,7 +17,7 @@ def _injected_headers(request: Request) -> dict:
 
 async def _proxy_json(request: Request, url: str) -> Response:
     """Proxy pour les requêtes JSON classiques."""
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=90.0) as client:
         body = await request.body()
         response = await client.request(
             method  = request.method,

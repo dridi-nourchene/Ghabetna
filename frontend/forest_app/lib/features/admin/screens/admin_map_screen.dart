@@ -6,6 +6,7 @@ import 'package:forest_app/core/theme/app_colors.dart';
 import 'package:forest_app/features/alert/models/alert_map_model.dart';
 import 'package:forest_app/features/alert/providers/alert_map_provider.dart';
 import 'package:forest_app/features/forest/providers/forest_provider.dart';
+import 'dart:ui' as ui;
 
 class AdminMapScreen extends ConsumerStatefulWidget {
   const AdminMapScreen({super.key});
@@ -190,7 +191,7 @@ class _TrianglePainter extends CustomPainter {
       ..style      = PaintingStyle.fill
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
 
-    final path = Path()
+    final path = ui.Path()
       ..moveTo(size.width / 2, 0)
       ..lineTo(size.width, size.height)
       ..lineTo(0, size.height)
