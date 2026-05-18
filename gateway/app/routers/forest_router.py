@@ -10,13 +10,20 @@ router = APIRouter(tags=["Forests, Parcelles & Affectations"])
 async def _proxy(request: Request, url: str) -> Response:
     async with httpx.AsyncClient() as client:
         body = await request.body()
+        
+        # Ne pas envoyer les headers vides
         headers = {
             "Content-Type":  "application/json",
             "Authorization": request.headers.get("Authorization", ""),
-            "X-User-Id":     getattr(request.state, "user_id",   ""),
-            "X-User-Role":   getattr(request.state, "user_role",  ""),
-            "X-User-Email":  getattr(request.state, "user_email", ""),
         }
+        user_id    = getattr(request.state, "user_id",    None)
+        user_role  = getattr(request.state, "user_role",  None)
+        user_email = getattr(request.state, "user_email", None)
+        
+        if user_id:    headers["X-User-Id"]    = str(user_id)
+        if user_role:  headers["X-User-Role"]  = str(user_role)
+        if user_email: headers["X-User-Email"] = str(user_email)
+        
         response = await client.request(
             method  = request.method,
             url     = url,
@@ -30,7 +37,6 @@ async def _proxy(request: Request, url: str) -> Response:
         status_code=response.status_code,
         content=response.json(),
     )
-
 
 # ══════════════════════════════════════════════════════════════
 #  FORESTS

@@ -1,5 +1,3 @@
-// features/alert/screens/create_alert_screen.dart
-
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,7 +20,7 @@ class _CreateAlertScreenState extends ConsumerState<CreateAlertScreen> {
   AlertType?    _selectedType;
   ForestSimple? _selectedForest;
   File?         _imageFile;
-  String?       _gpsInfo; // affiché sous l'image pour feedback
+  String?       _gpsInfo;
 
   @override
   void initState() {
@@ -38,34 +36,29 @@ class _CreateAlertScreenState extends ConsumerState<CreateAlertScreen> {
     super.dispose();
   }
 
-  // ── Choisir une image ──────────────────────────────────────
-
   Future<void> _pickImage(ImageSource source) async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(
-      source:      source,
+      source:       source,
       imageQuality: 80,
-      maxWidth:    1920,
+      maxWidth:     1920,
     );
-
     if (picked == null) return;
 
     final file = File(picked.path);
-
-    // Extraire GPS immédiatement pour donner un feedback
-    final gps = await AlertService.extractGpsFromImage(file);
+    final gps  = await AlertService.extractGpsFromImage(file);
 
     setState(() {
       _imageFile = file;
       _gpsInfo   = gps != null
-          ? '! GPS extrait : ${gps.lat.toStringAsFixed(5)}, ${gps.lng.toStringAsFixed(5)}'
+          ? '✓ GPS extrait : ${gps.lat.toStringAsFixed(5)}, ${gps.lng.toStringAsFixed(5)}'
           : '⚠️ Pas de GPS dans cette image — localisation via centroïde forêt';
     });
   }
 
   void _showImageSourceDialog() {
     showModalBottomSheet(
-      context:   context,
+      context: context,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (_) => SafeArea(
@@ -103,8 +96,6 @@ class _CreateAlertScreenState extends ConsumerState<CreateAlertScreen> {
       ),
     );
   }
-
-  // ── Soumettre ──────────────────────────────────────────────
 
   Future<void> _submit() async {
     if (_selectedType == null) {
@@ -169,20 +160,20 @@ class _CreateAlertScreenState extends ConsumerState<CreateAlertScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
 
-            // ── Type d'alerte ────────────────────────────
+            // ── Type d'alerte — même style que forêt ─────────
             _SectionLabel('Type d\'alerte *'),
             const SizedBox(height: 8),
-            _TypeDropdown(
+            _TypeDropdownFixed(
               selected: _selectedType,
               onSelect: (t) => setState(() => _selectedType = t),
             ),
 
             const SizedBox(height: 20),
 
-            // ── Forêt ────────────────────────────────────
+            // ── Forêt — dropdown taille fixe ─────────────────
             _SectionLabel('Forêt concernée *'),
             const SizedBox(height: 8),
-            _ForestDropdown(
+            _ForestDropdownFixed(
               forests:  state.forests,
               loading:  state.isLoadingForests,
               selected: _selectedForest,
@@ -191,10 +182,10 @@ class _CreateAlertScreenState extends ConsumerState<CreateAlertScreen> {
 
             const SizedBox(height: 20),
 
-            // ── Photo ─────────────────────────────────────
+            // ── Photo ─────────────────────────────────────────
             _SectionLabel('Photo'),
             const SizedBox(height: 8),
-            _ImagePicker(
+            _ImagePickerWidget(
               imageFile: _imageFile,
               gpsInfo:   _gpsInfo,
               onTap:     _showImageSourceDialog,
@@ -206,7 +197,7 @@ class _CreateAlertScreenState extends ConsumerState<CreateAlertScreen> {
 
             const SizedBox(height: 20),
 
-            // ── Description ───────────────────────────────
+            // ── Description ───────────────────────────────────
             _SectionLabel('Description'),
             const SizedBox(height: 8),
             TextField(
@@ -222,13 +213,13 @@ class _CreateAlertScreenState extends ConsumerState<CreateAlertScreen> {
                 fillColor: Colors.white,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide:
-                      const BorderSide(color: Color(0xFFE8EDE8), width: 0.5),
+                  borderSide: const BorderSide(
+                      color: Color(0xFFE8EDE8), width: 0.5),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide:
-                      const BorderSide(color: Color(0xFFE8EDE8), width: 0.5),
+                  borderSide: const BorderSide(
+                      color: Color(0xFFE8EDE8), width: 0.5),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -241,7 +232,7 @@ class _CreateAlertScreenState extends ConsumerState<CreateAlertScreen> {
 
             const SizedBox(height: 32),
 
-            // ── Bouton soumettre ──────────────────────────
+            // ── Bouton soumettre ──────────────────────────────
             SizedBox(
               width:  double.infinity,
               height: 52,
@@ -252,7 +243,7 @@ class _CreateAlertScreenState extends ConsumerState<CreateAlertScreen> {
                   foregroundColor: Colors.white,
                   disabledBackgroundColor:
                       AgentColors.primary.withOpacity(0.5),
-                  elevation:    0,
+                  elevation: 0,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14)),
                 ),
@@ -286,7 +277,7 @@ class _CreateAlertScreenState extends ConsumerState<CreateAlertScreen> {
 }
 
 // ══════════════════════════════════════════════════════════════
-//  WIDGETS INTERNES
+//  SECTION LABEL
 // ══════════════════════════════════════════════════════════════
 
 class _SectionLabel extends StatelessWidget {
@@ -301,140 +292,312 @@ class _SectionLabel extends StatelessWidget {
           color:      AgentColors.textSecondary));
 }
 
-// ── Dropdown type d'alerte ─────────────────────────────────────
-class _TypeDropdown extends StatelessWidget {
-  final AlertType?            selected;
+// ══════════════════════════════════════════════════════════════
+//  TYPE DROPDOWN — style identique à _ForestDropdownFixed
+// ══════════════════════════════════════════════════════════════
+
+class _TypeDropdownFixed extends StatelessWidget {
+  final AlertType?               selected;
   final void Function(AlertType) onSelect;
-  const _TypeDropdown({required this.selected, required this.onSelect});
+
+  const _TypeDropdownFixed({required this.selected, required this.onSelect});
+
+  static const double _h = 52.0;
 
   @override
-  Widget build(BuildContext context) => Container(
-        decoration: BoxDecoration(
-          color:        Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFE8EDE8), width: 0.5),
-        ),
+  Widget build(BuildContext context) {
+    final types = AlertType.values;
+
+    return SizedBox(
+      height: _h,
+      child: _shell(
+        hasValue: selected != null,
         child: DropdownButtonHideUnderline(
-          child: DropdownButton<AlertType>(
-            value:        selected,
-            hint: const Padding(
-              padding: EdgeInsets.only(left: 14),
-              child: Text('Choisir un type...',
-                  style: TextStyle(
-                      fontSize: 14, color: AgentColors.textMuted)),
-            ),
-            isExpanded:   true,
-            icon: const Padding(
-              padding: EdgeInsets.only(right: 12),
-              child: Icon(Icons.keyboard_arrow_down,
-                  color: AgentColors.textMuted),
-            ),
-            borderRadius: BorderRadius.circular(12),
-            items: AlertType.values
-                .map((t) => DropdownMenuItem(
-                      value: t,
-                      child: Padding(
-                        padding: const EdgeInsets.only(left: 14),
-                        child: Row(children: [
-                          Text(t.emoji,
-                              style: const TextStyle(fontSize: 18)),
-                          const SizedBox(width: 10),
-                          Text(t.label,
-                              style: const TextStyle(
-                                  fontSize:   14,
-                                  color:      AgentColors.textPrimary,
-                                  fontWeight: FontWeight.w500)),
-                        ]),
+          child: ButtonTheme(
+            alignedDropdown: true,
+            child: DropdownButton<AlertType>(
+              value:      selected,
+              isExpanded: true,
+              isDense:    false,
+              icon: const Padding(
+                padding: EdgeInsets.only(right: 8),
+                child: Icon(Icons.keyboard_arrow_down_rounded,
+                    color: AgentColors.textMuted, size: 22),
+              ),
+              hint: const Padding(
+                padding: EdgeInsets.only(left: 12),
+                child: Row(children: [
+                  Icon(Icons.warning_amber_rounded,
+                      size: 18, color: AgentColors.primary),
+                  SizedBox(width: 8),
+                  Text('Choisir un type...',
+                      style: TextStyle(
+                          fontSize: 14,
+                          color:    AgentColors.textMuted)),
+                ]),
+              ),
+              // Affichage dans le trigger (taille fixe)
+              selectedItemBuilder: (ctx) => types.map((t) =>
+                Padding(
+                  padding: const EdgeInsets.only(left: 12),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Row(children: [
+                      Text(t.emoji,
+                          style: const TextStyle(fontSize: 18)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          t.label,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize:   14,
+                            fontWeight: FontWeight.w600,
+                            color:      AgentColors.textPrimary,
+                          ),
+                        ),
                       ),
-                    ))
-                .toList(),
-            onChanged: (t) { if (t != null) onSelect(t); },
+                    ]),
+                  ),
+                ),
+              ).toList(),
+              // Items du menu déroulant
+              items: types.map((t) => DropdownMenuItem<AlertType>(
+                value: t,
+                child: Row(children: [
+                  Text(t.emoji,
+                      style: const TextStyle(fontSize: 18)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(t.label,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize:   14,
+                            color:      AgentColors.textPrimary,
+                            fontWeight: FontWeight.w500)),
+                  ),
+                ]),
+              )).toList(),
+              dropdownColor: Colors.white,
+              borderRadius:  BorderRadius.circular(12),
+              elevation:     4,
+              menuMaxHeight: 300,
+              onChanged: (t) { if (t != null) onSelect(t); },
+            ),
           ),
         ),
-      );
+      ),
+    );
+  }
+
+  Widget _shell({required bool hasValue, required Widget child}) {
+    return Container(
+      height: _h,
+      decoration: BoxDecoration(
+        color:        Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: hasValue ? AgentColors.primary : const Color(0xFFE0E8E0),
+          width: hasValue ? 1.5 : 1.0,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color:      Colors.black.withOpacity(0.03),
+            blurRadius: 6,
+            offset:     const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
 }
 
-// ── Dropdown forêt ────────────────────────────────────────────
-class _ForestDropdown extends StatelessWidget {
-  final List<ForestSimple>       forests;
-  final bool                     loading;
-  final ForestSimple?            selected;
+// ══════════════════════════════════════════════════════════════
+//  FOREST DROPDOWN — taille fixe, ne rétrécit JAMAIS à l'ouverture
+//
+//  Astuce : on wrape le DropdownButton dans un Container de
+//  hauteur fixe. Le DropdownButton utilise isExpanded:true pour
+//  remplir ce container, et selectedItemBuilder pour contrôler
+//  l'affichage dans le trigger sans laisser Flutter le redessiner.
+// ══════════════════════════════════════════════════════════════
+
+class _ForestDropdownFixed extends StatelessWidget {
+  final List<ForestSimple>          forests;
+  final bool                        loading;
+  final ForestSimple?               selected;
   final void Function(ForestSimple) onSelect;
 
-  const _ForestDropdown({
+  const _ForestDropdownFixed({
     required this.forests,
     required this.loading,
     required this.selected,
     required this.onSelect,
   });
 
+  static const double _h = 52.0; // hauteur fixe du trigger
+
   @override
-  Widget build(BuildContext context) => Container(
-        decoration: BoxDecoration(
-          color:        Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFE8EDE8), width: 0.5),
-        ),
-        child: loading
-            ? const Padding(
-                padding: EdgeInsets.all(16),
-                child: Center(
-                  child: SizedBox(
-                    width: 18, height: 18,
-                    child: CircularProgressIndicator(
-                        color: AgentColors.primary, strokeWidth: 2),
-                  ),
-                ),
-              )
-            : DropdownButtonHideUnderline(
-                child: DropdownButton<ForestSimple>(
-                  value:      selected,
-                  hint: const Padding(
-                    padding: EdgeInsets.only(left: 14),
-                    child: Text('Choisir une forêt...',
-                        style: TextStyle(
-                            fontSize: 14, color: AgentColors.textMuted)),
-                  ),
-                  isExpanded:   true,
-                  icon: const Padding(
-                    padding: EdgeInsets.only(right: 12),
-                    child: Icon(Icons.keyboard_arrow_down,
-                        color: AgentColors.textMuted),
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                  items: forests
-                      .map((f) => DropdownMenuItem(
-                            value: f,
-                            child: Padding(
-                              padding: const EdgeInsets.only(left: 14),
-                              child: Row(children: [
-                                const Icon(Icons.park_outlined,
-                                    size: 16,
-                                    color: AgentColors.primary),
-                                const SizedBox(width: 10),
-                                Text(f.name,
-                                    style: const TextStyle(
-                                        fontSize:   14,
-                                        color:      AgentColors.textPrimary,
-                                        fontWeight: FontWeight.w500)),
-                              ]),
-                            ),
-                          ))
-                      .toList(),
-                  onChanged: (f) { if (f != null) onSelect(f); },
-                ),
-              ),
+  Widget build(BuildContext context) {
+    // ── États loading / vide ─────────────────────────────
+    if (loading) {
+      return _shell(
+        selected: selected,
+        child: const Row(children: [
+          SizedBox(width: 16, height: 16,
+              child: CircularProgressIndicator(
+                  color: AgentColors.primary, strokeWidth: 2)),
+          SizedBox(width: 10),
+          Text('Chargement...', style: TextStyle(
+              fontSize: 14, color: AgentColors.textMuted)),
+        ]),
       );
+    }
+
+    if (forests.isEmpty) {
+      return _shell(
+        selected: selected,
+        child: const Row(children: [
+          Icon(Icons.info_outline, size: 16, color: AgentColors.textMuted),
+          SizedBox(width: 8),
+          Text('Aucune forêt disponible', style: TextStyle(
+              fontSize: 14, color: AgentColors.textMuted)),
+        ]),
+      );
+    }
+
+    // ── Dropdown réel ────────────────────────────────────
+    // On entoure dans un Container de hauteur fixe.
+    // DropdownButtonHideUnderline supprime la bordure basse.
+    // ButtonTheme(alignedDropdown:true) aligne le menu sur le trigger.
+    return SizedBox(
+      height: _h,
+      child: _shell(
+        selected: selected,
+        usePadding: false, // le DropdownButton gère son propre padding
+        child: DropdownButtonHideUnderline(
+          child: ButtonTheme(
+            alignedDropdown: true,
+            child: DropdownButton<ForestSimple>(
+              value:      selected,
+              isExpanded: true,
+              isDense:    false,
+              icon: const Padding(
+                padding: EdgeInsets.only(right: 8),
+                child: Icon(Icons.keyboard_arrow_down_rounded,
+                    color: AgentColors.textMuted, size: 22),
+              ),
+              hint: const Padding(
+                padding: EdgeInsets.only(left: 12),
+                child: Row(children: [
+                  Icon(Icons.park_outlined,
+                      size: 18, color: AgentColors.primary),
+                  SizedBox(width: 8),
+                  Text('Choisir une forêt...',
+                      style: TextStyle(
+                          fontSize: 14,
+                          color:    AgentColors.textMuted)),
+                ]),
+              ),
+              // selectedItemBuilder : affichage dans le trigger (taille fixe)
+              selectedItemBuilder: (ctx) => forests.map((f) =>
+                Padding(
+                  padding: const EdgeInsets.only(left: 12),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Row(children: [
+                      const Icon(Icons.park_outlined,
+                          size: 18, color: AgentColors.primary),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(f.name,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize:   14,
+                            fontWeight: FontWeight.w600,
+                            color:      AgentColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                    ]),
+                  ),
+                ),
+              ).toList(),
+              // items du menu déroulant
+              items: forests.map((f) => DropdownMenuItem<ForestSimple>(
+                value: f,
+                child: Row(children: [
+                  const Icon(Icons.park_outlined,
+                      size: 16, color: AgentColors.primary),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(f.name,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize:   14,
+                            color:      AgentColors.textPrimary,
+                            fontWeight: FontWeight.w500)),
+                  ),
+                ]),
+              )).toList(),
+              dropdownColor: Colors.white,
+              borderRadius:  BorderRadius.circular(12),
+              elevation:     4,
+              menuMaxHeight: 280,
+              onChanged: (f) { if (f != null) onSelect(f); },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Container décoratif partagé — toujours hauteur _h
+  Widget _shell({
+    required ForestSimple? selected,
+    required Widget        child,
+    bool usePadding = true,
+  }) {
+    return Container(
+      height: _h,
+      padding: usePadding
+          ? const EdgeInsets.symmetric(horizontal: 14)
+          : EdgeInsets.zero,
+      decoration: BoxDecoration(
+        color:        Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: selected != null
+              ? AgentColors.primary
+              : const Color(0xFFE0E8E0),
+          width: selected != null ? 1.5 : 1.0,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color:      Colors.black.withOpacity(0.03),
+            blurRadius: 6,
+            offset:     const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: usePadding
+          ? Align(alignment: Alignment.centerLeft, child: child)
+          : child,
+    );
+  }
 }
 
-// ── Zone image ────────────────────────────────────────────────
-class _ImagePicker extends StatelessWidget {
+// ══════════════════════════════════════════════════════════════
+//  IMAGE PICKER
+// ══════════════════════════════════════════════════════════════
+
+class _ImagePickerWidget extends StatelessWidget {
   final File?        imageFile;
   final String?      gpsInfo;
   final VoidCallback onTap;
   final VoidCallback onRemove;
 
-  const _ImagePicker({
+  const _ImagePickerWidget({
     required this.imageFile,
     required this.gpsInfo,
     required this.onTap,
@@ -456,11 +619,8 @@ class _ImagePicker extends StatelessWidget {
                 border: Border.all(
                   color: imageFile != null
                       ? AgentColors.primary.withOpacity(0.4)
-                      : const Color(0xFFE8EDE8),
-                  width: imageFile != null ? 1.5 : 0.5,
-                  style: imageFile != null
-                      ? BorderStyle.solid
-                      : BorderStyle.solid,
+                      : const Color(0xFFE0E8E0),
+                  width: imageFile != null ? 1.5 : 1.0,
                 ),
                 image: imageFile != null
                     ? DecorationImage(
@@ -514,9 +674,10 @@ class _ImagePicker extends StatelessWidget {
                 padding: const EdgeInsets.only(top: 6),
                 child: Text('Changer la photo',
                     style: TextStyle(
-                        fontSize:   12,
-                        color:      AgentColors.primary,
-                        decoration: TextDecoration.underline)),
+                        fontSize:        12,
+                        color:           AgentColors.primary,
+                        decoration:      TextDecoration.underline,
+                        decorationColor: AgentColors.primary)),
               ),
             ),
           if (gpsInfo != null)
@@ -526,7 +687,7 @@ class _ImagePicker extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(
                     horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
-                  color: gpsInfo!.contains('!')
+                  color: gpsInfo!.contains('✓')
                       ? const Color(0xFFE8F5EE)
                       : const Color(0xFFFFF8E6),
                   borderRadius: BorderRadius.circular(8),
@@ -534,7 +695,7 @@ class _ImagePicker extends StatelessWidget {
                 child: Text(gpsInfo!,
                     style: TextStyle(
                         fontSize: 12,
-                        color:    gpsInfo!.contains('!')
+                        color:    gpsInfo!.contains('✓')
                             ? AgentColors.primary
                             : const Color(0xFF9C6E00))),
               ),

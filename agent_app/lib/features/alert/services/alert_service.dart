@@ -3,23 +3,22 @@ import 'dart:io';
 import 'package:exif/exif.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:agent_app/core/constants.dart';
+import 'package:agent_app/core/token_storage.dart'; // ← FIX: TokenStorage au lieu de FlutterSecureStorage
 import 'package:agent_app/features/alert/models/alert_model.dart';
 
 class AlertService {
-  static const _storage = FlutterSecureStorage();
-  static const _base    = ApiConstants.baseUrl;
+  // FIX: utiliser TokenStorage (SharedPreferences) — même storage que auth_provider
+  final _storage = TokenStorage();
+  static const _base = ApiConstants.baseUrl;
 
   Future<Map<String, String>> _authHeaders() async {
-    final token = await _storage.read(key: 'access_token');
+    final token = await _storage.getAccessToken(); // ← corrigé
     return {'Authorization': 'Bearer ${token ?? ''}'};
   }
 
   // ── EXIF GPS extraction ────────────────────────────────────
 
-  /// Extrait les coordonnées GPS depuis les métadonnées EXIF d'une image.
-  /// Retourne null si pas de GPS dans l'image.
   static Future<({double lat, double lng})?> extractGpsFromImage(
       File imageFile) async {
     try {
@@ -35,7 +34,6 @@ class AlertService {
 
       if (latTag == null || lngTag == null) return null;
 
-      // Convertir IFDRatio list → degrés décimaux
       double _toDecimal(IfdTag tag) {
         final values = tag.values.toList();
         final deg    = (values[0] as Ratio).toDouble();
@@ -47,7 +45,6 @@ class AlertService {
       double lat = _toDecimal(latTag);
       double lng = _toDecimal(lngTag);
 
-      // Appliquer le signe selon N/S et E/W
       if (latRef?.printable == 'S') lat = -lat;
       if (lngRef?.printable == 'W') lng = -lng;
 
@@ -131,10 +128,9 @@ class AlertService {
 
     if (response.statusCode == 200) {
       final body = jsonDecode(response.body);
-      // Adapter selon le format de réponse de forest_ms
       final List items = body is List ? body : (body['items'] ?? body['forests'] ?? []);
       return items.map((j) => ForestSimple.fromJson(j)).toList();
     }
-    throw Exception('Impossible de charger les forêts');
+    throw Exception('Impossible de charger les forêts (${response.statusCode})');
   }
 }

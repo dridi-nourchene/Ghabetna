@@ -1,5 +1,8 @@
+# backend/alert_ms/app/services/alert_service.py
+
 import os
 import uuid
+import httpx  # ajouter cet import
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,18 +17,19 @@ from app.models.alert import Alert, AlertStatus, AlertType
 from app.schemas.alert import AlertCreate, AlertStatusUpdate
 from app.core.config import settings
 
-# ── Dossier uploads ───────────────────────────────────────────
 UPLOAD_DIR = Path("uploads/alerts")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_SIZE_MB   = 10
 
+# URL du forest_ms — à mettre dans .env idéalement
+FOREST_SERVICE_URL = os.getenv("FOREST_SERVICE_URL", "http://localhost:8002")
+
 
 # ── HELPERS ───────────────────────────────────────────────────
 
 def _image_url(image_path: Optional[str]) -> Optional[str]:
-    """Construit l'URL publique depuis le chemin relatif."""
     if not image_path:
         return None
     return f"{settings.BASE_URL}/uploads/{image_path}"
@@ -50,53 +54,61 @@ def _alert_to_dict(alert: Alert) -> dict:
     }
 
 
-async def _get_forest_centroid(db: AsyncSession, forest_id: UUID) -> tuple[float, float]:
+async def _get_forest_centroid(forest_id: UUID) -> tuple[float, float]:
     """
-    Fallback : récupère le centroïde de la forêt depuis forest_ms DB.
-    Appelé si l'image n'a pas de coordonnées EXIF.
-    Note : forest_ms et alert_ms partagent la même DB PostgreSQL dans notre config.
+    Récupère le centroïde de la forêt via l'API du forest_ms.
+    NE PAS faire de requête SQL directe — forest est dans une autre DB.
     """
-    result = await db.execute(
-        text("SELECT centroid_lat, centroid_lng FROM forests WHERE id = :id"),
-        {"id": str(forest_id)},
-    )
-    row = result.fetchone()
-    if not row or row[0] is None:
+    url = f"{FOREST_SERVICE_URL}/api/forests/{forest_id}"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(url)
+
+        if response.status_code == 404:
+            raise HTTPException(
+                status_code=400,
+                detail="Forêt introuvable — vérifiez l'identifiant.",
+            )
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=400,
+                detail="Impossible de contacter le service forêt.",
+            )
+
+        data = response.json()
+        lat  = data.get("centroid_lat")
+        lng  = data.get("centroid_lng")
+
+        if lat is None or lng is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Impossible de localiser l'alerte — la forêt n'a pas de "
+                       "coordonnées. Veuillez prendre une photo avec GPS activé.",
+            )
+        return float(lat), float(lng)
+
+    except httpx.RequestError as e:
         raise HTTPException(
-            status_code=400,
-            detail="Impossible de localiser l'alerte — la forêt n'a pas de coordonnées. "
-                   "Veuillez prendre une photo avec GPS activé.",
+            status_code=503,
+            detail=f"Service forêt inaccessible : {e}",
         )
-    return float(row[0]), float(row[1])
 
 
 async def _save_image(file: UploadFile) -> str:
-    """Sauvegarde l'image et retourne le chemin relatif."""
-    # Vérifier le type
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(
             status_code=400,
-            detail=f"Format non supporté : {file.content_type}. "
-                   f"Utilisez JPEG, PNG ou WebP.",
+            detail=f"Format non supporté : {file.content_type}. Utilisez JPEG, PNG ou WebP.",
         )
-
-    # Vérifier la taille
     content = await file.read()
     if len(content) > MAX_SIZE_MB * 1024 * 1024:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Image trop lourde (max {MAX_SIZE_MB}MB)",
-        )
+        raise HTTPException(status_code=400, detail=f"Image trop lourde (max {MAX_SIZE_MB}MB)")
 
-    # Sauvegarder avec nom unique
     ext       = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "jpg"
     filename  = f"{uuid.uuid4()}.{ext}"
     file_path = UPLOAD_DIR / filename
-
     with open(file_path, "wb") as f:
         f.write(content)
-
-    # Retourner le chemin relatif (alerts/filename.jpg)
     return f"alerts/{filename}"
 
 
@@ -108,18 +120,12 @@ async def create_alert(
     agent_id: UUID,
     image:    Optional[UploadFile] = None,
 ) -> dict:
-    """
-    Crée une alerte.
-    Localisation :
-      1. Coords envoyées par Flutter (extraites EXIF côté mobile)
-      2. Si absentes → centroïde de la forêt (fallback)
-    """
     # 1. Résoudre la localisation
     lat, lng = data.latitude, data.longitude
 
     if lat is None or lng is None:
-        # Fallback — centroïde forêt
-        lat, lng = await _get_forest_centroid(db, data.forest_id)
+        # Fallback HTTP vers forest_ms — plus de SQL cross-service
+        lat, lng = await _get_forest_centroid(data.forest_id)
 
     # 2. Sauvegarder l'image
     image_path = None
@@ -144,30 +150,18 @@ async def create_alert(
     db.add(alert)
     await db.commit()
     await db.refresh(alert)
-
     return _alert_to_dict(alert)
 
 
-# ── GET — agent (ses alertes uniquement) ──────────────────────
-
-async def get_agent_alerts(
-    db:       AsyncSession,
-    agent_id: UUID,
-) -> list[dict]:
+# Les autres fonctions restent identiques...
+async def get_agent_alerts(db: AsyncSession, agent_id: UUID) -> list[dict]:
     result = await db.execute(
-        select(Alert)
-        .where(Alert.agent_id == agent_id)
-        .order_by(Alert.created_at.desc())
+        select(Alert).where(Alert.agent_id == agent_id).order_by(Alert.created_at.desc())
     )
     return [_alert_to_dict(a) for a in result.scalars().all()]
 
 
-# ── GET — admin (toutes les alertes) ─────────────────────────
-
-async def get_all_alerts(
-    db:     AsyncSession,
-    status: Optional[AlertStatus] = None,
-) -> list[dict]:
+async def get_all_alerts(db: AsyncSession, status: Optional[AlertStatus] = None) -> list[dict]:
     query = select(Alert).order_by(Alert.created_at.desc())
     if status:
         query = query.where(Alert.status == status)
@@ -175,18 +169,9 @@ async def get_all_alerts(
     return [_alert_to_dict(a) for a in result.scalars().all()]
 
 
-# ── GET — map points (polling admin) ─────────────────────────
-
 async def get_map_points(db: AsyncSession) -> list[dict]:
-    """
-    Retourne uniquement les alertes non rejetées pour la map.
-    Rejetées = ne s'affichent plus sur la map.
-    Payload minimal pour le polling (léger).
-    """
     result = await db.execute(
-        select(Alert)
-        .where(Alert.status != AlertStatus.rejeter)
-        .order_by(Alert.created_at.desc())
+        select(Alert).where(Alert.status != AlertStatus.rejeter).order_by(Alert.created_at.desc())
     )
     alerts = result.scalars().all()
     return [
@@ -203,34 +188,22 @@ async def get_map_points(db: AsyncSession) -> list[dict]:
     ]
 
 
-# ── GET — détail ──────────────────────────────────────────────
-
 async def get_alert_by_id(db: AsyncSession, alert_id: UUID) -> dict:
-    result = await db.execute(
-        select(Alert).where(Alert.id == alert_id)
-    )
-    alert = result.scalar_one_or_none()
+    result = await db.execute(select(Alert).where(Alert.id == alert_id))
+    alert  = result.scalar_one_or_none()
     if not alert:
         raise HTTPException(status_code=404, detail="Alerte introuvable")
     return _alert_to_dict(alert)
 
 
-# ── UPDATE statut + commentaire (admin) ───────────────────────
-
 async def update_alert_status(
-    db:       AsyncSession,
-    alert_id: UUID,
-    data:     AlertStatusUpdate,
-    admin_id: UUID,
+    db: AsyncSession, alert_id: UUID, data: AlertStatusUpdate, admin_id: UUID
 ) -> dict:
-    result = await db.execute(
-        select(Alert).where(Alert.id == alert_id)
-    )
-    alert = result.scalar_one_or_none()
+    result = await db.execute(select(Alert).where(Alert.id == alert_id))
+    alert  = result.scalar_one_or_none()
     if not alert:
         raise HTTPException(status_code=404, detail="Alerte introuvable")
 
-    # Collecter avant commit
     alert.status = data.status
     if data.admin_comment is not None:
         alert.admin_comment = data.admin_comment
@@ -238,8 +211,6 @@ async def update_alert_status(
         alert.commented_at  = datetime.now(timezone.utc)
 
     await db.commit()
-
-    # Relire après commit
     result2 = await db.execute(select(Alert).where(Alert.id == alert_id))
     alert   = result2.scalar_one_or_none()
     return _alert_to_dict(alert)

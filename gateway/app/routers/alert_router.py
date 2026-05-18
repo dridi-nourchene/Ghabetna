@@ -6,13 +6,16 @@ ALERT_SERVICE_URL = "http://localhost:8003"
 
 router = APIRouter(tags=["Alertes"])
 
-
 def _injected_headers(request: Request) -> dict:
-    return {
-        "X-User-Id":    getattr(request.state, "user_id",    ""),
-        "X-User-Role":  getattr(request.state, "user_role",  ""),
-        "X-User-Email": getattr(request.state, "user_email", ""),
-    }
+    headers = {}
+    user_id    = getattr(request.state, "user_id",    None)
+    user_role  = getattr(request.state, "user_role",  None)
+    user_email = getattr(request.state, "user_email", None)
+    
+    if user_id:    headers["X-User-Id"]    = str(user_id)
+    if user_role:  headers["X-User-Role"]  = str(user_role)
+    if user_email: headers["X-User-Email"] = str(user_email)
+    return headers
 
 
 async def _proxy_json(request: Request, url: str) -> Response:

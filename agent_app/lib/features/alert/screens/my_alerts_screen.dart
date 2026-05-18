@@ -30,11 +30,8 @@ class _MyAlertsScreenState extends ConsumerState<MyAlertsScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation:       0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new,
-              size: 18, color: AgentColors.textPrimary),
-          onPressed: () => context.go('/home'),
-        ),
+        // Pas de bouton retour — la bottom nav gère la navigation
+        automaticallyImplyLeading: false,
         title: const Text('Mes alertes',
             style: TextStyle(
                 fontSize:   17,
@@ -113,7 +110,6 @@ class _AlertCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Image si présente
             if (alert.imageUrl != null)
               ClipRRect(
                 borderRadius: const BorderRadius.vertical(
@@ -139,7 +135,6 @@ class _AlertCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Type + statut
                   Row(children: [
                     Text(alert.type.emoji,
                         style: const TextStyle(fontSize: 20)),
@@ -165,7 +160,6 @@ class _AlertCard extends StatelessWidget {
                     ),
                   ]),
 
-                  // Description
                   if (alert.description != null &&
                       alert.description!.isNotEmpty) ...[
                     const SizedBox(height: 8),
@@ -177,7 +171,6 @@ class _AlertCard extends StatelessWidget {
                         overflow:  TextOverflow.ellipsis),
                   ],
 
-                  // Commentaire admin
                   if (alert.adminComment != null &&
                       alert.adminComment!.isNotEmpty) ...[
                     const SizedBox(height: 10),
@@ -206,7 +199,6 @@ class _AlertCard extends StatelessWidget {
 
                   const SizedBox(height: 10),
 
-                  // Date + coordonnées
                   Row(children: [
                     const Icon(Icons.access_time,
                         size: 12, color: AgentColors.textMuted),
@@ -235,8 +227,8 @@ class _AlertCard extends StatelessWidget {
       );
 
   String _formatDate(DateTime dt) {
-    final now   = DateTime.now();
-    final diff  = now.difference(dt);
+    final now  = DateTime.now();
+    final diff = now.difference(dt);
     if (diff.inMinutes < 60) return 'Il y a ${diff.inMinutes} min';
     if (diff.inHours < 24)  return 'Il y a ${diff.inHours}h';
     return '${dt.day}/${dt.month}/${dt.year}';
@@ -252,7 +244,8 @@ class _EmptyView extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.notifications_none_outlined,
-                size: 64, color: AgentColors.textMuted.withOpacity(0.4)),
+                size: 64,
+                color: AgentColors.textMuted.withOpacity(0.4)),
             const SizedBox(height: 16),
             const Text('Aucune alerte déclarée',
                 style: TextStyle(
@@ -269,7 +262,7 @@ class _EmptyView extends StatelessWidget {
 }
 
 class _ErrorView extends StatelessWidget {
-  final String     message;
+  final String       message;
   final VoidCallback onRetry;
   const _ErrorView({required this.message, required this.onRetry});
 

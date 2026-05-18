@@ -40,7 +40,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final auth      = ref.watch(authProvider);
     final isLoading = auth.isLoading;
 
-    // Rediriger si déjà connecté
     ref.listen<AuthState>(authProvider, (_, next) {
       if (next.isAuthenticated && mounted) context.go('/home');
     });
@@ -59,21 +58,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 // ── Logo + Titre ─────────────────────────────
                 Center(
                   child: Column(children: [
-                    Container(
-                      width: 72, height: 72,
-                      decoration: BoxDecoration(
-                        color:        AgentColors.primary,
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color:      AgentColors.primary.withOpacity(0.3),
-                            blurRadius: 20,
-                            offset:     const Offset(0, 8),
-                          ),
-                        ],
+                    // Logo Ghabetna — image asset
+                    Image.asset(
+                      'assets/images/logo.png',
+                      width:  100,
+                      height: 100,
+                      errorBuilder: (_, __, ___) => Container(
+                        width: 72, height: 72,
+                        decoration: BoxDecoration(
+                          color:        AgentColors.primary,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color:      AgentColors.primary.withOpacity(0.3),
+                              blurRadius: 20,
+                              offset:     const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(Icons.park,
+                            color: Colors.white, size: 36),
                       ),
-                      child: const Icon(Icons.park,
-                          color: Colors.white, size: 36),
                     ),
                     const SizedBox(height: 16),
                     const Text('Ghabetna',
@@ -122,7 +127,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                       const SizedBox(height: 24),
 
-                      // Email
                       const _FieldLabel('Email'),
                       const SizedBox(height: 6),
                       TextFormField(
@@ -149,7 +153,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                       const SizedBox(height: 16),
 
-                      // Mot de passe
                       const _FieldLabel('Mot de passe'),
                       const SizedBox(height: 6),
                       TextFormField(
@@ -185,7 +188,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         },
                       ),
 
-                      // ── Erreur API ─────────────────────────
                       if (auth.errorMessage != null) ...[
                         const SizedBox(height: 14),
                         Container(
@@ -216,7 +218,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                       const SizedBox(height: 24),
 
-                      // ── Bouton connexion ───────────────────
                       SizedBox(
                         width:  double.infinity,
                         height: 52,
@@ -249,10 +250,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                 const SizedBox(height: 32),
 
-                // ── Footer ───────────────────────────────────
                 Center(
                   child: Text(
-                    'DGF — Direction Générale des Forêts\nAlgérie',
+                    'DGF — Direction Générale des Forêts',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                         fontSize: 11,

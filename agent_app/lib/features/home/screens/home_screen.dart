@@ -21,13 +21,20 @@ class HomeScreen extends ConsumerWidget {
             children: [
               // ── Header ──────────────────────────────────
               Row(children: [
-                Container(
-                  width: 44, height: 44,
-                  decoration: BoxDecoration(
-                    color:        AgentColors.primary,
-                    borderRadius: BorderRadius.circular(12),
+                // Logo Ghabetna
+                Image.asset(
+                  'assets/images/logo.png',
+                  width: 44,
+                  height: 44,
+                  errorBuilder: (_, __, ___) => Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color:        AgentColors.primary,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.park, color: Colors.white, size: 22),
                   ),
-                  child: const Icon(Icons.park, color: Colors.white, size: 22),
                 ),
                 const SizedBox(width: 12),
                 Column(
@@ -47,15 +54,7 @@ class HomeScreen extends ConsumerWidget {
                     ),
                   ],
                 ),
-                const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.logout_outlined,
-                      color: AgentColors.textMuted),
-                  onPressed: () async {
-                    await ref.read(authProvider.notifier).logout();
-                    if (context.mounted) context.go('/login');
-                  },
-                ),
+                // Plus de bouton logout ici → dans la bottom nav bar
               ]),
 
               const SizedBox(height: 40),

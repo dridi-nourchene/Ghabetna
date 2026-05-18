@@ -7,23 +7,20 @@ router = APIRouter(prefix="/api/users", tags=["Users"])
 
 
 async def _proxy(request: Request, url: str) -> JSONResponse:
-    """
-    Proxy générique :
-    - Transfère le body
-    - Injecte les headers X-User-* depuis le middleware
-    """
     async with httpx.AsyncClient() as client:
         body = await request.body()
-
-        # Headers enrichis avec les infos du user (depuis le middleware)
+        
         headers = {
             "Content-Type":  "application/json",
             "Authorization": request.headers.get("Authorization", ""),
-            "X-User-Id":     getattr(request.state, "user_id",    ""),
-            "X-User-Role":   getattr(request.state, "user_role",   ""),
-            "X-User-Email":  getattr(request.state, "user_email",  ""),
-            
         }
+        user_id    = getattr(request.state, "user_id",    None)
+        user_role  = getattr(request.state, "user_role",  None)
+        user_email = getattr(request.state, "user_email", None)
+        
+        if user_id:    headers["X-User-Id"]    = str(user_id)
+        if user_role:  headers["X-User-Role"]  = str(user_role)
+        if user_email: headers["X-User-Email"] = str(user_email)
 
         response = await client.request(
             method  = request.method,
@@ -32,7 +29,6 @@ async def _proxy(request: Request, url: str) -> JSONResponse:
             content = body,
             params  = request.query_params,
         )
-
     return JSONResponse(
         status_code = response.status_code,
         content     = response.json(),
