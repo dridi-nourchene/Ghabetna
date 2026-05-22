@@ -1,4 +1,4 @@
-// features/alert/services/alert_service.dart
+// features/alert/services/alert_map_service.dart
 
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -18,7 +18,10 @@ class AlertMapService {
     };
   }
 
-  // ── Polling map — alertes non rejetées ────────────────────
+  // ── Polling map ───────────────────────────────────────────
+  // Retourne les alertes non rejetées
+  // incident_lat/lng peuvent être null → sera géré côté Flutter
+  // en utilisant le centroïde de la forêt
 
   Future<List<AlertMapPoint>> getMapPoints() async {
     final res = await http.get(
@@ -31,7 +34,7 @@ class AlertMapService {
           .map((j) => AlertMapPoint.fromJson(j))
           .toList();
     }
-    throw Exception('Erreur chargement alertes map');
+    throw Exception('Erreur chargement alertes map (${res.statusCode})');
   }
 
   // ── Détail alerte (popup) ─────────────────────────────────
@@ -45,7 +48,7 @@ class AlertMapService {
     if (res.statusCode == 200) {
       return AlertDetail.fromJson(jsonDecode(res.body));
     }
-    throw Exception('Alerte introuvable');
+    throw Exception('Alerte introuvable (${res.statusCode})');
   }
 
   // ── Changer statut + commentaire ─────────────────────────
@@ -60,7 +63,8 @@ class AlertMapService {
       headers: await _authHeaders(),
       body: jsonEncode({
         'status':        status,
-        if (adminComment != null) 'admin_comment': adminComment,
+        if (adminComment != null && adminComment.isNotEmpty)
+          'admin_comment': adminComment,
       }),
     ).timeout(const Duration(seconds: 15));
 
@@ -68,6 +72,6 @@ class AlertMapService {
       return AlertDetail.fromJson(jsonDecode(res.body));
     }
     final err = jsonDecode(res.body);
-    throw Exception(err['detail'] ?? 'Erreur mise à jour');
+    throw Exception(err['detail'] ?? 'Erreur mise à jour statut');
   }
 }

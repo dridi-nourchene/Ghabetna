@@ -1,3 +1,5 @@
+// features/admin/screens/admin_map_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -5,8 +7,10 @@ import 'package:latlong2/latlong.dart';
 import 'package:forest_app/core/theme/app_colors.dart';
 import 'package:forest_app/features/alert/models/alert_map_model.dart';
 import 'package:forest_app/features/alert/providers/alert_map_provider.dart';
+import 'package:forest_app/features/forest/models/forest_model.dart';
 import 'package:forest_app/features/forest/providers/forest_provider.dart';
 import 'dart:ui' as ui;
+import 'dart:math' as math;
 
 class AdminMapScreen extends ConsumerStatefulWidget {
   const AdminMapScreen({super.key});
@@ -16,16 +20,14 @@ class AdminMapScreen extends ConsumerStatefulWidget {
 }
 
 class _AdminMapScreenState extends ConsumerState<AdminMapScreen> {
-  final _mapController   = MapController();
+  final _mapController  = MapController();
   String? _selectedAlertId;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Démarrer le polling alertes
       ref.read(alertMapProvider.notifier).startPolling();
-      // Charger les forêts pour les polygones
       ref.read(forestListProvider.notifier).loadForests();
     });
   }
@@ -46,57 +48,99 @@ class _AdminMapScreenState extends ConsumerState<AdminMapScreen> {
     ref.read(alertDetailProvider.notifier).clear();
   }
 
+  // ── Résoudre la position de l'icône ──────────────────────
+  // Si EXIF disponible → coordonnées précises
+  // Sinon → centroïde de la forêt (déjà chargé)
+  LatLng? _resolvePosition(
+    AlertMapPoint point,
+    List<Forest> forests,
+  ) {
+    // 1. EXIF présent → position précise
+    if (point.hasExactLocation) {
+      return LatLng(point.incidentLat!, point.incidentLng!);
+    }
+
+    // 2. Pas d'EXIF → chercher le centroïde de la forêt
+    try {
+      final forest = forests.firstWhere((f) => f.id == point.forestId);
+      if (forest.centroidLat != null && forest.centroidLng != null) {
+        return LatLng(forest.centroidLat!, forest.centroidLng!);
+      }
+    } catch (_) {
+      // Forêt pas encore chargée
+    }
+
+    return null; // Pas encore de position disponible
+  }
+
   @override
   Widget build(BuildContext context) {
     final alertState  = ref.watch(alertMapProvider);
     final forestState = ref.watch(forestListProvider);
+    final forests     = forestState.forests;
+
+    // Construire les polygones forêts
+    final forestPolygons = forests.map((f) {
+      final pts = f.geojson.latLngList
+          .map((p) => LatLng(p[0], p[1]))
+          .toList();
+      if (pts.isEmpty) return null;
+      return Polygon(
+        points:            pts,
+        color:             const Color(0x222E7D32),
+        borderColor:       const Color(0xFF2E7D32),
+        borderStrokeWidth: 1.2,
+        isFilled:          true,
+      );
+    }).whereType<Polygon>().toList();
+
+    // Construire les marqueurs alertes
+    final alertMarkers = <Marker>[];
+    for (final point in alertState.points) {
+      final position = _resolvePosition(point, forests);
+      if (position == null) continue; // Forêt pas encore chargée
+
+      alertMarkers.add(Marker(
+        point:  position,
+        width:  40,
+        height: 44,
+        child: GestureDetector(
+          onTap: () => _onAlertTap(point.id),
+          child: _AlertTriangle(
+            type:            point.type,
+            status:          point.status,
+            isSelected:      _selectedAlertId == point.id,
+            isApproximate:   !point.hasExactLocation,
+          ),
+        ),
+      ));
+    }
 
     return Stack(
       children: [
-        // ── Map principale ───────────────────────────────────
+        // ── Carte ────────────────────────────────────────────
         FlutterMap(
           mapController: _mapController,
           options: const MapOptions(
-            initialCenter: LatLng(28.0339, 1.6596), // Centre Algérie
-            initialZoom:   5.5,
-            minZoom:       3,
+            initialCenter: LatLng(33.8869, 9.5375), // Centre Tunisie
+            initialZoom:   7.0,
+            minZoom:       4,
             maxZoom:       18,
           ),
           children: [
-            // Fond de carte
             TileLayer(
-              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              userAgentPackageName: 'com.ghabetna.forest',
+              urlTemplate:          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName: 'com.ghabetna.forest_app',
             ),
-
-            // Polygones des forêts (gris clair)
-            PolygonLayer(polygons: [
-              // TODO: ajouter les polygones forêts depuis forestState
-              // when forest GeoJSON is loaded
-            ]),
-
-            // Marqueurs alertes — triangles
-            MarkerLayer(
-              markers: alertState.points.map((point) {
-                return Marker(
-                  point:  LatLng(point.latitude, point.longitude),
-                  width:  40,
-                  height: 40,
-                  child: GestureDetector(
-                    onTap: () => _onAlertTap(point.id),
-                    child: _AlertTriangle(
-                      type:       point.type,
-                      status:     point.status,
-                      isSelected: _selectedAlertId == point.id,
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
+            // Polygones forêts (fond vert clair)
+            if (forestPolygons.isNotEmpty)
+              PolygonLayer(polygons: forestPolygons),
+            // Marqueurs alertes
+            MarkerLayer(markers: alertMarkers),
           ],
         ),
 
-        // ── Barre d'état polling ─────────────────────────────
+        // ── Indicateur polling ────────────────────────────────
         Positioned(
           top: 16, right: 16,
           child: _PollingIndicator(
@@ -113,15 +157,14 @@ class _AdminMapScreenState extends ConsumerState<AdminMapScreen> {
           child: _Legend(),
         ),
 
-        // ── Popup détail alerte ──────────────────────────────
+        // ── Popup détail alerte ───────────────────────────────
         if (_selectedAlertId != null)
           Positioned(
             top: 16, left: 16,
             child: _AlertDetailPanel(
-              alertId: _selectedAlertId!,
-              onClose: _closePopup,
+              alertId:         _selectedAlertId!,
+              onClose:         _closePopup,
               onStatusUpdated: () {
-                // Rafraîchir la map après mise à jour statut
                 ref.read(alertMapProvider.notifier).refreshNow();
               },
             ),
@@ -132,38 +175,47 @@ class _AdminMapScreenState extends ConsumerState<AdminMapScreen> {
 }
 
 // ══════════════════════════════════════════════════════════════
-//  TRIANGLE ALERTE
+//  TRIANGLE ALERTE — toujours rouge, taille selon sélection
+//  isApproximate → petite pastille "~" pour indiquer position approx
 // ══════════════════════════════════════════════════════════════
 
 class _AlertTriangle extends StatelessWidget {
   final AlertType   type;
   final AlertStatus status;
   final bool        isSelected;
+  final bool        isApproximate; // position = centroïde forêt
 
   const _AlertTriangle({
     required this.type,
     required this.status,
     required this.isSelected,
+    required this.isApproximate,
   });
 
+  // Toujours rouge — nuance selon statut
   Color get _color => switch (status) {
-        AlertStatus.en_cours => const Color(0xFFE05C2A), // orange-rouge
-        AlertStatus.traiter  => const Color(0xFF1D9E75), // vert
-        AlertStatus.rejeter  => Colors.grey,             // ne devrait pas apparaître
+        AlertStatus.en_cours => const Color(0xFFD32F2F), // rouge vif
+        AlertStatus.traiter  => const Color(0xFF388E3C), // vert traité
+        AlertStatus.rejeter  => const Color(0xFF9E9E9E), // gris rejeté
       };
 
   @override
-  Widget build(BuildContext context) => AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        child: CustomPaint(
-          size: Size(isSelected ? 40 : 32, isSelected ? 40 : 32),
+  Widget build(BuildContext context) {
+    final size = isSelected ? 42.0 : 32.0;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        CustomPaint(
+          size: Size(size, size),
           painter: _TrianglePainter(
             color:      _color,
             isSelected: isSelected,
           ),
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 8),
+          child: SizedBox(
+            width:  size,
+            height: size,
+            child: Align(
+              alignment: const Alignment(0, -0.1),
               child: Text(
                 type.emoji,
                 style: TextStyle(fontSize: isSelected ? 14 : 11),
@@ -171,7 +223,31 @@ class _AlertTriangle extends StatelessWidget {
             ),
           ),
         ),
-      );
+        // Pastille "~" si position approximative
+        if (isApproximate)
+          Positioned(
+            top:   -4,
+            right: -4,
+            child: Container(
+              width:  14, height: 14,
+              decoration: BoxDecoration(
+                color:  const Color(0xFFFF8F00),
+                shape:  BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 1.5),
+              ),
+              child: const Center(
+                child: Text('~',
+                    style: TextStyle(
+                        fontSize:   8,
+                        color:      Colors.white,
+                        fontWeight: FontWeight.w700,
+                        height:     1)),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 class _TrianglePainter extends CustomPainter {
@@ -182,14 +258,14 @@ class _TrianglePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color   = color
-      ..style   = PaintingStyle.fill;
-
     final shadowPaint = Paint()
-      ..color      = Colors.black.withOpacity(0.2)
+      ..color      = Colors.black.withOpacity(0.25)
       ..style      = PaintingStyle.fill
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+
+    final fillPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
 
     final path = ui.Path()
       ..moveTo(size.width / 2, 0)
@@ -197,12 +273,12 @@ class _TrianglePainter extends CustomPainter {
       ..lineTo(0, size.height)
       ..close();
 
-    // Ombre
-    canvas.drawPath(path.shift(const Offset(1, 2)), shadowPaint);
-    // Triangle
-    canvas.drawPath(path, paint);
+    // Ombre décalée
+    canvas.drawPath(path.shift(const Offset(1.5, 2.5)), shadowPaint);
+    // Triangle plein
+    canvas.drawPath(path, fillPaint);
 
-    // Bordure si sélectionné
+    // Bordure blanche si sélectionné
     if (isSelected) {
       final borderPaint = Paint()
         ..color       = Colors.white
@@ -222,9 +298,9 @@ class _TrianglePainter extends CustomPainter {
 // ══════════════════════════════════════════════════════════════
 
 class _PollingIndicator extends StatelessWidget {
-  final int       alertCount;
-  final DateTime? lastRefresh;
-  final bool      isLoading;
+  final int          alertCount;
+  final DateTime?    lastRefresh;
+  final bool         isLoading;
   final VoidCallback onRefresh;
 
   const _PollingIndicator({
@@ -256,13 +332,10 @@ class _PollingIndicator extends StatelessWidget {
           ],
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          // Indicateur actif
           Container(
             width: 8, height: 8,
             decoration: BoxDecoration(
-              color: isLoading
-                  ? AppColors.warning
-                  : AppColors.success,
+              color: isLoading ? AppColors.warning : AppColors.success,
               shape: BoxShape.circle,
             ),
           ),
@@ -272,17 +345,15 @@ class _PollingIndicator extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                '$alertCount alerte${alertCount != 1 ? 's' : ''} actives',
+                '$alertCount alerte${alertCount != 1 ? 's' : ''} active${alertCount != 1 ? 's' : ''}',
                 style: const TextStyle(
                     fontSize:   12,
                     fontWeight: FontWeight.w600,
                     color:      AppColors.textPrimary),
               ),
-              Text(
-                _lastRefreshText,
-                style: const TextStyle(
-                    fontSize: 10, color: AppColors.textMuted),
-              ),
+              Text(_lastRefreshText,
+                  style: const TextStyle(
+                      fontSize: 10, color: AppColors.textMuted)),
             ],
           ),
           const SizedBox(width: 10),
@@ -330,18 +401,46 @@ class _Legend extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                     color:      AppColors.textSecondary)),
             const SizedBox(height: 8),
-            _LegendItem(color: const Color(0xFFE05C2A), label: 'En cours'),
+            _LegendRow(
+              color: const Color(0xFFD32F2F),
+              label: 'En cours',
+            ),
             const SizedBox(height: 4),
-            _LegendItem(color: const Color(0xFF1D9E75), label: 'Traitée'),
+            _LegendRow(
+              color: const Color(0xFF388E3C),
+              label: 'Traitée',
+            ),
+            const SizedBox(height: 6),
+            // Explication pastille ~
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              Container(
+                width: 14, height: 14,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFFF8F00),
+                  shape: BoxShape.circle,
+                ),
+                child: const Center(
+                  child: Text('~',
+                      style: TextStyle(
+                          fontSize: 8,
+                          color:    Colors.white,
+                          fontWeight: FontWeight.w700)),
+                ),
+              ),
+              const SizedBox(width: 6),
+              const Text('Position approx.',
+                  style: TextStyle(
+                      fontSize: 10, color: AppColors.textMuted)),
+            ]),
           ],
         ),
       );
 }
 
-class _LegendItem extends StatelessWidget {
+class _LegendRow extends StatelessWidget {
   final Color  color;
   final String label;
-  const _LegendItem({required this.color, required this.label});
+  const _LegendRow({required this.color, required this.label});
 
   @override
   Widget build(BuildContext context) => Row(
@@ -364,7 +463,7 @@ class _LegendItem extends StatelessWidget {
 // ══════════════════════════════════════════════════════════════
 
 class _AlertDetailPanel extends ConsumerStatefulWidget {
-  final String   alertId;
+  final String       alertId;
   final VoidCallback onClose;
   final VoidCallback onStatusUpdated;
 
@@ -395,18 +494,15 @@ class _AlertDetailPanelState extends ConsumerState<_AlertDetailPanel> {
               ? null
               : _commentController.text.trim(),
         );
-
-    if (ok) {
+    if (ok && mounted) {
       widget.onStatusUpdated();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content:         const Text('Statut mis à jour'),
-          backgroundColor: AppColors.success,
-          behavior:        SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8)),
-        ));
-      }
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content:         const Text('Statut mis à jour'),
+        backgroundColor: AppColors.success,
+        behavior:        SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8)),
+      ));
     }
   }
 
@@ -415,15 +511,15 @@ class _AlertDetailPanelState extends ConsumerState<_AlertDetailPanel> {
     final state = ref.watch(alertDetailProvider);
 
     return Container(
-      width:  300,
-      constraints: const BoxConstraints(maxHeight: 520),
+      width:       320,
+      constraints: const BoxConstraints(maxHeight: 560),
       decoration: BoxDecoration(
         color:        Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color:      Colors.black.withOpacity(0.12),
-            blurRadius: 20,
+            color:      Colors.black.withOpacity(0.15),
+            blurRadius: 24,
             offset:     const Offset(0, 8),
           ),
         ],
@@ -431,56 +527,69 @@ class _AlertDetailPanelState extends ConsumerState<_AlertDetailPanel> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-
-          // ── Header ────────────────────────────────────────
+          // ── Header ──────────────────────────────────────
           Container(
-            padding: const EdgeInsets.symmetric(
-                horizontal: 16, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: const BoxDecoration(
               border: Border(
-                  bottom: BorderSide(
-                      color: Color(0xFFE8EDE8), width: 0.5)),
+                  bottom: BorderSide(color: AppColors.borderLight, width: 0.5)),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
             ),
             child: Row(children: [
-              const Icon(Icons.warning_amber_rounded,
-                  size: 16, color: AppColors.primaryMid),
-              const SizedBox(width: 8),
+              Container(
+                width: 28, height: 28,
+                decoration: BoxDecoration(
+                  color: AppColors.danger.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                child: const Icon(Icons.warning_amber_rounded,
+                    size: 15, color: AppColors.danger),
+              ),
+              const SizedBox(width: 10),
               const Expanded(
                 child: Text('Détail de l\'alerte',
                     style: TextStyle(
-                        fontSize:   13,
+                        fontSize:   14,
                         fontWeight: FontWeight.w600,
                         color:      AppColors.textPrimary)),
               ),
               GestureDetector(
                 onTap: widget.onClose,
-                child: const Icon(Icons.close,
-                    size: 16, color: AppColors.textMuted),
+                child: Container(
+                  width: 26, height: 26,
+                  decoration: BoxDecoration(
+                    color: AppColors.bgInput,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Icon(Icons.close,
+                      size: 14, color: AppColors.textMuted),
+                ),
               ),
             ]),
           ),
 
-          // ── Contenu ───────────────────────────────────────
+          // ── Contenu scrollable ───────────────────────────
           Flexible(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: state.isLoading
                   ? const Center(
                       child: Padding(
-                        padding: EdgeInsets.all(24),
+                        padding: EdgeInsets.symmetric(vertical: 32),
                         child: CircularProgressIndicator(
                             color: AppColors.primaryMid, strokeWidth: 2),
                       ),
                     )
-                  : state.alert == null
-                      ? const Text('Erreur chargement',
-                          style: TextStyle(color: AppColors.textMuted))
-                      : _AlertDetailContent(
-                          alert:              state.alert!,
-                          commentController:  _commentController,
-                          isUpdating:         state.isUpdating,
-                          onUpdate:           _updateStatus,
-                        ),
+                  : state.error != null
+                      ? _ErrorState(message: state.error!)
+                      : state.alert == null
+                          ? const SizedBox.shrink()
+                          : _AlertContent(
+                              alert:             state.alert!,
+                              commentController: _commentController,
+                              isUpdating:        state.isUpdating,
+                              onUpdate:          _updateStatus,
+                            ),
             ),
           ),
         ],
@@ -489,13 +598,15 @@ class _AlertDetailPanelState extends ConsumerState<_AlertDetailPanel> {
   }
 }
 
-class _AlertDetailContent extends StatelessWidget {
-  final AlertDetail         alert;
-  final TextEditingController commentController;
-  final bool                isUpdating;
-  final void Function(String) onUpdate;
+// ── Contenu détail ─────────────────────────────────────────────
 
-  const _AlertDetailContent({
+class _AlertContent extends StatelessWidget {
+  final AlertDetail             alert;
+  final TextEditingController   commentController;
+  final bool                    isUpdating;
+  final void Function(String)   onUpdate;
+
+  const _AlertContent({
     required this.alert,
     required this.commentController,
     required this.isUpdating,
@@ -503,15 +614,15 @@ class _AlertDetailContent extends StatelessWidget {
   });
 
   Color get _statusColor => switch (alert.status) {
-        AlertStatus.en_cours => const Color(0xFFE05C2A),
-        AlertStatus.traiter  => const Color(0xFF1D9E75),
-        AlertStatus.rejeter  => Colors.grey,
+        AlertStatus.en_cours => AppColors.danger,
+        AlertStatus.traiter  => AppColors.success,
+        AlertStatus.rejeter  => AppColors.textMuted,
       };
 
   Color get _statusBg => switch (alert.status) {
-        AlertStatus.en_cours => const Color(0xFFFFF0EA),
-        AlertStatus.traiter  => const Color(0xFFE8F5EE),
-        AlertStatus.rejeter  => const Color(0xFFF5F5F5),
+        AlertStatus.en_cours => AppColors.danger.withOpacity(0.08),
+        AlertStatus.traiter  => AppColors.successBg,
+        AlertStatus.rejeter  => AppColors.bgInput,
       };
 
   @override
@@ -519,17 +630,29 @@ class _AlertDetailContent extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
 
-          // Type + statut
+          // ── Type + statut ────────────────────────────────
           Row(children: [
             Text(alert.type.emoji,
-                style: const TextStyle(fontSize: 22)),
-            const SizedBox(width: 8),
-            Text(alert.type.label,
-                style: const TextStyle(
-                    fontSize:   14,
-                    fontWeight: FontWeight.w600,
-                    color:      AppColors.textPrimary)),
-            const Spacer(),
+                style: const TextStyle(fontSize: 24)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(alert.type.label,
+                      style: const TextStyle(
+                          fontSize:   15,
+                          fontWeight: FontWeight.w700,
+                          color:      AppColors.textPrimary)),
+                  const SizedBox(height: 2),
+                  Text(
+                    _formatDate(alert.createdAt),
+                    style: const TextStyle(
+                        fontSize: 10, color: AppColors.textMuted),
+                  ),
+                ],
+              ),
+            ),
             Container(
               padding: const EdgeInsets.symmetric(
                   horizontal: 10, vertical: 4),
@@ -545,7 +668,7 @@ class _AlertDetailContent extends StatelessWidget {
             ),
           ]),
 
-          // Image
+          // ── Image ────────────────────────────────────────
           if (alert.imageUrl != null) ...[
             const SizedBox(height: 12),
             ClipRRect(
@@ -553,21 +676,21 @@ class _AlertDetailContent extends StatelessWidget {
               child: Image.network(
                 alert.imageUrl!,
                 width:  double.infinity,
-                height: 140,
+                height: 150,
                 fit:    BoxFit.cover,
                 errorBuilder: (_, __, ___) => Container(
-                  height: 60,
-                  color:  const Color(0xFFF5F5F5),
+                  height: 50,
+                  color:  AppColors.bgInput,
                   child:  const Center(
                     child: Icon(Icons.broken_image_outlined,
-                        color: Color(0xFFBDBDBD)),
+                        color: AppColors.textMuted),
                   ),
                 ),
               ),
             ),
           ],
 
-          // Description
+          // ── Description ──────────────────────────────────
           if (alert.description != null &&
               alert.description!.isNotEmpty) ...[
             const SizedBox(height: 12),
@@ -577,121 +700,188 @@ class _AlertDetailContent extends StatelessWidget {
                 style: const TextStyle(
                     fontSize: 12,
                     color:    AppColors.textSecondary,
-                    height:   1.4)),
+                    height:   1.5)),
           ],
 
-          // Coordonnées
           const SizedBox(height: 12),
+          Container(height: 0.5, color: AppColors.borderLight),
+          const SizedBox(height: 12),
+
+          // ── Localisation ─────────────────────────────────
           const _Label('Localisation'),
-          const SizedBox(height: 4),
-          Row(children: [
-            const Icon(Icons.location_on_outlined,
-                size: 12, color: AppColors.textMuted),
-            const SizedBox(width: 4),
-            Text(
-              '${alert.latitude.toStringAsFixed(5)}, '
-              '${alert.longitude.toStringAsFixed(5)}',
-              style: const TextStyle(
-                  fontSize: 11, color: AppColors.textMuted),
-            ),
-          ]),
+          const SizedBox(height: 6),
 
-          // Date
-          const SizedBox(height: 4),
-          Row(children: [
-            const Icon(Icons.access_time,
-                size: 12, color: AppColors.textMuted),
-            const SizedBox(width: 4),
-            Text(
-              _formatDate(alert.createdAt),
-              style: const TextStyle(
-                  fontSize: 11, color: AppColors.textMuted),
-            ),
-          ]),
+          // Source
+          _InfoRow(
+            icon:  Icons.location_on_outlined,
+            color: alert.locationSource == LocationSource.exif
+                ? AppColors.success
+                : AppColors.warning,
+            text: switch (alert.locationSource) {
+              LocationSource.exif        => 'GPS photo (précis)',
+              LocationSource.agent_gps   => 'GPS téléphone',
+              LocationSource.forest_only => 'Position approx. (centroïde forêt)',
+            },
+          ),
 
-          // Commentaire admin existant
+          // Coordonnées incident si disponibles
+          if (alert.incidentLat != null) ...[
+            const SizedBox(height: 4),
+            _InfoRow(
+              icon:  Icons.my_location,
+              color: AppColors.primaryMid,
+              text:  'Incident : ${alert.incidentLat!.toStringAsFixed(5)}, '
+                     '${alert.incidentLng!.toStringAsFixed(5)}',
+            ),
+          ],
+
+          // Position agent si disponible
+          if (alert.agentLat != null) ...[
+            const SizedBox(height: 4),
+            _InfoRow(
+              icon:  Icons.person_pin_circle_outlined,
+              color: AppColors.info,
+              text:  'Agent : ${alert.agentLat!.toStringAsFixed(5)}, '
+                     '${alert.agentLng!.toStringAsFixed(5)}',
+            ),
+          ],
+
+          // Distance agent ↔ incident si les deux sont disponibles
+          if (alert.distanceKm != null) ...[
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color:        alert.distanceKm! > 5
+                    ? AppColors.danger.withOpacity(0.08)
+                    : AppColors.successBg,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: alert.distanceKm! > 5
+                      ? AppColors.danger.withOpacity(0.3)
+                      : AppColors.success.withOpacity(0.3),
+                  width: 0.5,
+                ),
+              ),
+              child: Row(children: [
+                Icon(
+                  alert.distanceKm! > 5
+                      ? Icons.warning_outlined
+                      : Icons.check_circle_outline,
+                  size:  13,
+                  color: alert.distanceKm! > 5
+                      ? AppColors.danger
+                      : AppColors.success,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'Distance agent–incident : '
+                  '${alert.distanceKm!.toStringAsFixed(1)} km'
+                  '${alert.distanceKm! > 5 ? ' ⚠️ Suspect' : ''}',
+                  style: TextStyle(
+                      fontSize: 11,
+                      color:    alert.distanceKm! > 5
+                          ? AppColors.danger
+                          : AppColors.success,
+                      fontWeight: FontWeight.w500),
+                ),
+              ]),
+            ),
+          ],
+
+          const SizedBox(height: 12),
+          Container(height: 0.5, color: AppColors.borderLight),
+          const SizedBox(height: 12),
+
+          // ── Commentaire admin existant ────────────────────
           if (alert.adminComment != null &&
               alert.adminComment!.isNotEmpty) ...[
-            const SizedBox(height: 12),
+            const _Label('Commentaire admin'),
+            const SizedBox(height: 6),
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color:        const Color(0xFFF0F4FF),
+                color:        AppColors.infoBg,
                 borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                    color: AppColors.info.withOpacity(0.3), width: 0.5),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Icon(Icons.admin_panel_settings_outlined,
-                      size: 13, color: Color(0xFF4B6CB7)),
+                      size: 13, color: AppColors.info),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(alert.adminComment!,
                         style: const TextStyle(
-                            fontSize: 11,
-                            color:    Color(0xFF4B6CB7))),
+                            fontSize: 11, color: AppColors.info)),
                   ),
                 ],
               ),
             ),
+            const SizedBox(height: 12),
+            Container(height: 0.5, color: AppColors.borderLight),
+            const SizedBox(height: 12),
           ],
 
-          const SizedBox(height: 16),
-          const Divider(height: 1, color: Color(0xFFE8EDE8)),
-          const SizedBox(height: 14),
-
-          // ── Actions admin ──────────────────────────────────
+          // ── Actions admin ─────────────────────────────────
           if (alert.status == AlertStatus.en_cours) ...[
-            const _Label('Commentaire (optionnel)'),
-            const SizedBox(height: 6),
+            const _Label('Décision'),
+            const SizedBox(height: 8),
+
+            // Champ commentaire
             TextField(
               controller: commentController,
               maxLines:   2,
               style: const TextStyle(
                   fontSize: 12, color: AppColors.textPrimary),
               decoration: InputDecoration(
-                hintText:  'Ajouter un commentaire...',
+                hintText:  'Commentaire (optionnel)...',
                 hintStyle: const TextStyle(
                     fontSize: 12, color: AppColors.textMuted),
                 filled:    true,
-                fillColor: const Color(0xFFF5F7F5),
+                fillColor: AppColors.bgInput,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                   borderSide:   const BorderSide(
-                      color: Color(0xFFE8EDE8), width: 0.5),
+                      color: AppColors.border, width: 0.5),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                   borderSide:   const BorderSide(
-                      color: Color(0xFFE8EDE8), width: 0.5),
+                      color: AppColors.border, width: 0.5),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(
-                      color: AppColors.primaryMid, width: 1),
+                  borderSide:   const BorderSide(
+                      color: AppColors.primaryMid, width: 1.2),
                 ),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 10, vertical: 8),
                 isDense: true,
               ),
             ),
-            const SizedBox(height: 12),
+
+            const SizedBox(height: 10),
+
             Row(children: [
               Expanded(
-                child: _ActionButton(
+                child: _ActionBtn(
                   label:     'Traiter',
-                  color:     AppColors.success,
                   icon:      Icons.check_circle_outline,
+                  color:     AppColors.success,
                   isLoading: isUpdating,
                   onTap:     () => onUpdate('traiter'),
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: _ActionButton(
+                child: _ActionBtn(
                   label:     'Rejeter',
-                  color:     const Color(0xFF9E9E9E),
                   icon:      Icons.cancel_outlined,
+                  color:     AppColors.textMuted,
                   isLoading: isUpdating,
                   onTap:     () => onUpdate('rejeter'),
                 ),
@@ -705,6 +895,8 @@ class _AlertDetailContent extends StatelessWidget {
               decoration: BoxDecoration(
                 color:        _statusBg,
                 borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                    color: _statusColor.withOpacity(0.3), width: 0.5),
               ),
               child: Row(children: [
                 Icon(
@@ -731,9 +923,12 @@ class _AlertDetailContent extends StatelessWidget {
   String _formatDate(DateTime dt) =>
       '${dt.day.toString().padLeft(2, '0')}/'
       '${dt.month.toString().padLeft(2, '0')}/'
-      '${dt.year} ${dt.hour.toString().padLeft(2, '0')}:'
+      '${dt.year}  '
+      '${dt.hour.toString().padLeft(2, '0')}:'
       '${dt.minute.toString().padLeft(2, '0')}';
 }
+
+// ── Widgets utilitaires ────────────────────────────────────────
 
 class _Label extends StatelessWidget {
   final String text;
@@ -742,23 +937,41 @@ class _Label extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Text(text,
       style: const TextStyle(
-          fontSize:   10,
-          fontWeight: FontWeight.w600,
-          color:      AppColors.textSecondary,
+          fontSize:      10,
+          fontWeight:    FontWeight.w600,
+          color:         AppColors.textSecondary,
           letterSpacing: 0.3));
 }
 
-class _ActionButton extends StatelessWidget {
-  final String     label;
-  final Color      color;
-  final IconData   icon;
-  final bool       isLoading;
+class _InfoRow extends StatelessWidget {
+  final IconData icon;
+  final Color    color;
+  final String   text;
+  const _InfoRow({required this.icon, required this.color, required this.text});
+
+  @override
+  Widget build(BuildContext context) => Row(children: [
+        Icon(icon, size: 12, color: color),
+        const SizedBox(width: 5),
+        Expanded(
+          child: Text(text,
+              style: const TextStyle(
+                  fontSize: 11, color: AppColors.textSecondary)),
+        ),
+      ]);
+}
+
+class _ActionBtn extends StatelessWidget {
+  final String       label;
+  final IconData     icon;
+  final Color        color;
+  final bool         isLoading;
   final VoidCallback onTap;
 
-  const _ActionButton({
+  const _ActionBtn({
     required this.label,
-    required this.color,
     required this.icon,
+    required this.color,
     required this.isLoading,
     required this.onTap,
   });
@@ -783,6 +996,28 @@ class _ActionButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 10),
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8)),
+        ),
+      );
+}
+
+class _ErrorState extends StatelessWidget {
+  final String message;
+  const _ErrorState({required this.message});
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline,
+                color: AppColors.danger, size: 32),
+            const SizedBox(height: 8),
+            Text(message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontSize: 12, color: AppColors.textSecondary)),
+          ],
         ),
       );
 }

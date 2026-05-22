@@ -213,8 +213,8 @@ class _AlertCard extends StatelessWidget {
                         size: 12, color: AgentColors.textMuted),
                     const SizedBox(width: 4),
                     Text(
-                      '${alert.latitude.toStringAsFixed(4)}, '
-                      '${alert.longitude.toStringAsFixed(4)}',
+                      '${alert.agentLat}, '
+                      '${alert.agentLng}',
                       style: const TextStyle(
                           fontSize: 11, color: AgentColors.textMuted),
                     ),

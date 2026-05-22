@@ -7,25 +7,33 @@ down_revision = "c1d2e3f4a5b6"
 branch_labels = None
 depends_on    = None
 
+# Définir l'enum explicitement
+location_source_enum = sa.Enum(
+    "exif", "agent_gps", "forest_only",
+    name="locationsource"
+)
 
 def upgrade():
-    # Supprimer les anciennes colonnes latitude/longitude
+    # 1. Créer le type ENUM dans PostgreSQL EN PREMIER
+    location_source_enum.create(op.get_bind(), checkfirst=True)
+
+    # 2. Supprimer les anciennes colonnes
     op.drop_column("alerts", "latitude")
     op.drop_column("alerts", "longitude")
 
-    # Ajouter les nouvelles colonnes
+    # 3. Ajouter les nouvelles colonnes
     op.add_column("alerts", sa.Column("incident_lat", sa.Float(), nullable=True))
     op.add_column("alerts", sa.Column("incident_lng", sa.Float(), nullable=True))
     op.add_column("alerts", sa.Column("agent_lat",    sa.Float(), nullable=True))
     op.add_column("alerts", sa.Column("agent_lng",    sa.Float(), nullable=True))
     op.add_column("alerts", sa.Column(
         "location_source",
-        sa.Enum("exif", "agent_gps", "forest_only", name="locationsource"),
+        location_source_enum,
         nullable=False,
         server_default="forest_only",
     ))
 
-    # geom devient nullable
+    # 4. geom devient nullable
     op.alter_column("alerts", "geom", nullable=True)
 
 
@@ -37,3 +45,6 @@ def downgrade():
     op.drop_column("alerts", "agent_lat")
     op.drop_column("alerts", "agent_lng")
     op.drop_column("alerts", "location_source")
+
+    # Supprimer le type ENUM après avoir supprimé la colonne
+    location_source_enum.drop(op.get_bind(), checkfirst=True)
