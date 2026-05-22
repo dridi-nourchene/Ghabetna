@@ -3,8 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:agent_app/features/alert/models/alert_model.dart';
 import 'package:agent_app/features/alert/services/alert_service.dart';
 
-// ── State déclaration alerte ──────────────────────────────────
-
 class CreateAlertState {
   final List<ForestSimple> forests;
   final bool               isLoadingForests;
@@ -13,11 +11,11 @@ class CreateAlertState {
   final bool               success;
 
   const CreateAlertState({
-    this.forests         = const [],
+    this.forests          = const [],
     this.isLoadingForests = false,
-    this.isSubmitting    = false,
+    this.isSubmitting     = false,
     this.error,
-    this.success         = false,
+    this.success          = false,
   });
 
   CreateAlertState copyWith({
@@ -27,14 +25,13 @@ class CreateAlertState {
     String?             error,
     bool                clearError = false,
     bool?               success,
-  }) =>
-      CreateAlertState(
-        forests:          forests          ?? this.forests,
-        isLoadingForests: isLoadingForests ?? this.isLoadingForests,
-        isSubmitting:     isSubmitting     ?? this.isSubmitting,
-        error:            clearError       ? null : (error ?? this.error),
-        success:          success          ?? this.success,
-      );
+  }) => CreateAlertState(
+    forests:          forests          ?? this.forests,
+    isLoadingForests: isLoadingForests ?? this.isLoadingForests,
+    isSubmitting:     isSubmitting     ?? this.isSubmitting,
+    error:            clearError       ? null : (error ?? this.error),
+    success:          success          ?? this.success,
+  );
 }
 
 class CreateAlertNotifier extends StateNotifier<CreateAlertState> {
@@ -56,24 +53,28 @@ class CreateAlertNotifier extends StateNotifier<CreateAlertState> {
   }
 
   Future<bool> submitAlert({
-    required AlertType   type,
-    required String      forestId,
-    String?              description,
-    File?                imageFile,
+    required AlertType type,
+    required String    forestId,
+    String?            description,
+    File?              imageFile,
   }) async {
     state = state.copyWith(isSubmitting: true, clearError: true, success: false);
 
     try {
-      // Extraire GPS depuis l'image
-      double? lat, lng;
+      // 1. GPS téléphone — position de l'agent au moment du submit
+      final agentPos = await AlertService.getAgentLocation();
+
+      // 2. EXIF — localisation de l'incident
+      double? incidentLat;
+      double? incidentLng;
       if (imageFile != null) {
-        final gps = await AlertService.extractGpsFromImage(imageFile);
-        if (gps != null) {
-          lat = gps.lat;
-          lng = gps.lng;
-          print('[EXIF] GPS extrait : $lat, $lng');
+        final exif = await AlertService.extractGpsFromImage(imageFile);
+        if (exif != null) {
+          incidentLat = exif.lat;
+          incidentLng = exif.lng;
+          print('[ALERT] EXIF GPS : $incidentLat, $incidentLng');
         } else {
-          print('[EXIF] Pas de GPS dans l\'image — fallback centroïde forêt');
+          print('[ALERT] Pas de GPS EXIF → forest_only');
         }
       }
 
@@ -81,8 +82,10 @@ class CreateAlertNotifier extends StateNotifier<CreateAlertState> {
         type:        type,
         forestId:    forestId,
         description: description,
-        latitude:    lat,
-        longitude:   lng,
+        incidentLat: incidentLat,
+        incidentLng: incidentLng,
+        agentLat:    agentPos?.lat,
+        agentLng:    agentPos?.lng,
         imageFile:   imageFile,
       );
 
@@ -105,7 +108,7 @@ final createAlertProvider =
   (ref) => CreateAlertNotifier(),
 );
 
-// ── State liste mes alertes ───────────────────────────────────
+// ── Mes alertes ───────────────────────────────────────────────
 
 class MyAlertsState {
   final List<AlertModel> alerts;
@@ -123,12 +126,11 @@ class MyAlertsState {
     bool?             isLoading,
     String?           error,
     bool              clearError = false,
-  }) =>
-      MyAlertsState(
-        alerts:    alerts    ?? this.alerts,
-        isLoading: isLoading ?? this.isLoading,
-        error:     clearError ? null : (error ?? this.error),
-      );
+  }) => MyAlertsState(
+    alerts:    alerts    ?? this.alerts,
+    isLoading: isLoading ?? this.isLoading,
+    error:     clearError ? null : (error ?? this.error),
+  );
 }
 
 class MyAlertsNotifier extends StateNotifier<MyAlertsState> {
