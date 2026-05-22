@@ -1,7 +1,10 @@
+// features/auth/screens/login_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 import 'package:agent_app/core/theme/app_colors.dart';
+import 'package:agent_app/core/widgets/lang_toggle.dart';
 import 'package:agent_app/features/auth/providers/auth_provider.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -37,6 +40,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n      = AppLocalizations.of(context)!;
     final auth      = ref.watch(authProvider);
     final isLoading = auth.isLoading;
 
@@ -55,10 +59,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
 
+                // ── Toggle langue (top right) ────────────────
+                Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: const LangToggle(),
+                ),
+
+                const SizedBox(height: 24),
+
                 // ── Logo + Titre ─────────────────────────────
                 Center(
                   child: Column(children: [
-                    // Logo Ghabetna — image asset
                     Image.asset(
                       'assets/images/logo.png',
                       width:  100,
@@ -81,15 +92,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    const Text('Ghabetna',
-                        style: TextStyle(
+                    Text(l10n.appTitle,
+                        style: const TextStyle(
                             fontSize:      28,
                             fontWeight:    FontWeight.w800,
                             color:         AgentColors.textPrimary,
                             letterSpacing: -0.5)),
                     const SizedBox(height: 4),
-                    const Text('Application Agent DGF',
-                        style: TextStyle(
+                    Text(l10n.appSubtitle,
+                        style: const TextStyle(
                             fontSize: 14,
                             color:    AgentColors.textMuted)),
                   ]),
@@ -114,38 +125,39 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Connexion',
-                          style: TextStyle(
+                      Text(l10n.loginTitle,
+                          style: const TextStyle(
                               fontSize:   20,
                               fontWeight: FontWeight.w700,
                               color:      AgentColors.textPrimary)),
                       const SizedBox(height: 4),
-                      const Text('Accédez à votre espace agent',
-                          style: TextStyle(
+                      Text(l10n.loginSubtitle,
+                          style: const TextStyle(
                               fontSize: 13,
                               color:    AgentColors.textMuted)),
 
                       const SizedBox(height: 24),
 
-                      const _FieldLabel('Email'),
+                      _FieldLabel(l10n.loginEmail),
                       const SizedBox(height: 6),
                       TextFormField(
                         controller:   _emailController,
                         keyboardType: TextInputType.emailAddress,
                         autocorrect:  false,
+                        textDirection: TextDirection.ltr,
                         style: const TextStyle(
                             fontSize: 14,
                             color:    AgentColors.textPrimary),
                         decoration: _inputDecoration(
-                          hint: 'votre@email.com',
+                          hint: l10n.loginEmailHint,
                           icon: Icons.mail_outline,
                         ),
                         validator: (v) {
                           if (v == null || v.trim().isEmpty) {
-                            return 'Email requis';
+                            return l10n.loginEmailRequired;
                           }
                           if (!v.contains('@')) {
-                            return 'Email invalide';
+                            return l10n.loginEmailInvalid;
                           }
                           return null;
                         },
@@ -153,7 +165,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                       const SizedBox(height: 16),
 
-                      const _FieldLabel('Mot de passe'),
+                      _FieldLabel(l10n.loginPassword),
                       const SizedBox(height: 6),
                       TextFormField(
                         controller:  _passwordController,
@@ -179,10 +191,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ),
                         validator: (v) {
                           if (v == null || v.isEmpty) {
-                            return 'Mot de passe requis';
+                            return l10n.loginPasswordRequired;
                           }
                           if (v.length < 6) {
-                            return 'Minimum 6 caractères';
+                            return l10n.loginPasswordMin;
                           }
                           return null;
                         },
@@ -238,8 +250,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   child: CircularProgressIndicator(
                                       color:       Colors.white,
                                       strokeWidth: 2.5))
-                              : const Text('Se connecter',
-                                  style: TextStyle(
+                              : Text(l10n.loginButton,
+                                  style: const TextStyle(
                                       fontSize:   16,
                                       fontWeight: FontWeight.w600)),
                         ),
@@ -252,7 +264,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                 Center(
                   child: Text(
-                    'DGF — Direction Générale des Forêts',
+                    l10n.loginFooter,
                     textAlign: TextAlign.center,
                     style: TextStyle(
                         fontSize: 11,

@@ -1,6 +1,7 @@
+// features/alert/screens/my_alerts_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:agent_app/core/theme/app_colors.dart';
 import 'package:agent_app/features/alert/models/alert_model.dart';
 import 'package:agent_app/features/alert/providers/alert_provider.dart';
@@ -23,62 +24,41 @@ class _MyAlertsScreenState extends ConsumerState<MyAlertsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n  = AppLocalizations.of(context)!;
     final state = ref.watch(myAlertsProvider);
 
-    return Scaffold(
-      backgroundColor: AgentColors.bgPage,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation:       0,
-        // Pas de bouton retour — la bottom nav gère la navigation
-        automaticallyImplyLeading: false,
-        title: const Text('Mes alertes',
-            style: TextStyle(
-                fontSize:   17,
-                fontWeight: FontWeight.w600,
-                color:      AgentColors.textPrimary)),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh,
-                color: AgentColors.textMuted, size: 20),
-            onPressed: () => ref.read(myAlertsProvider.notifier).load(),
-          ),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(0.5),
-          child: Container(height: 0.5, color: const Color(0xFFE8EDE8)),
-        ),
-      ),
-      body: state.isLoading
-          ? const Center(
-              child: CircularProgressIndicator(
-                  color: AgentColors.primary, strokeWidth: 2))
-          : state.error != null
-              ? _ErrorView(
-                  message: state.error!,
-                  onRetry: () => ref.read(myAlertsProvider.notifier).load(),
-                )
-              : state.alerts.isEmpty
-                  ? const _EmptyView()
-                  : RefreshIndicator(
-                      color:    AgentColors.primary,
-                      onRefresh: () =>
-                          ref.read(myAlertsProvider.notifier).load(),
-                      child: ListView.builder(
-                        padding:     const EdgeInsets.all(16),
-                        itemCount:   state.alerts.length,
-                        itemBuilder: (_, i) =>
-                            _AlertCard(alert: state.alerts[i]),
-                      ),
+    return state.isLoading
+        ? const Center(
+            child: CircularProgressIndicator(
+                color: AgentColors.primary, strokeWidth: 2))
+        : state.error != null
+            ? _ErrorView(
+                message: state.error!,
+                retryLabel: l10n.myAlertsRetry,
+                onRetry: () => ref.read(myAlertsProvider.notifier).load(),
+              )
+            : state.alerts.isEmpty
+                ? _EmptyView(l10n: l10n)
+                : RefreshIndicator(
+                    color:    AgentColors.primary,
+                    onRefresh: () =>
+                        ref.read(myAlertsProvider.notifier).load(),
+                    child: ListView.builder(
+                      padding:     const EdgeInsets.all(16),
+                      itemCount:   state.alerts.length,
+                      itemBuilder: (_, i) =>
+                          _AlertCard(alert: state.alerts[i], l10n: l10n),
                     ),
-    );
+                  );
   }
 }
 
+// ── Alert Card ───────────────────────────────────────────────
+
 class _AlertCard extends StatelessWidget {
-  final AlertModel alert;
-  const _AlertCard({required this.alert});
+  final AlertModel       alert;
+  final AppLocalizations l10n;
+  const _AlertCard({required this.alert, required this.l10n});
 
   Color get _statusColor => switch (alert.status) {
         AlertStatus.en_cours => const Color(0xFFE05C2A),
@@ -90,6 +70,21 @@ class _AlertCard extends StatelessWidget {
         AlertStatus.en_cours => const Color(0xFFFFF0EA),
         AlertStatus.traiter  => const Color(0xFFE8F5EE),
         AlertStatus.rejeter  => const Color(0xFFF5F5F5),
+      };
+
+  String _statusLabel() => switch (alert.status) {
+        AlertStatus.en_cours => l10n.alertStatusEnCours,
+        AlertStatus.traiter  => l10n.alertStatusTraiter,
+        AlertStatus.rejeter  => l10n.alertStatusRejeter,
+      };
+
+  String _typeLabel() => switch (alert.type) {
+        AlertType.incendie   => l10n.alertTypeIncendie,
+        AlertType.vol        => l10n.alertTypeVol,
+        AlertType.inondation => l10n.alertTypeInondation,
+        AlertType.glissement => l10n.alertTypeGlissement,
+        AlertType.maladie    => l10n.alertTypeMaladie,
+        AlertType.autre      => l10n.alertTypeAutre,
       };
 
   @override
@@ -139,7 +134,7 @@ class _AlertCard extends StatelessWidget {
                     Text(alert.type.emoji,
                         style: const TextStyle(fontSize: 20)),
                     const SizedBox(width: 8),
-                    Text(alert.type.label,
+                    Text(_typeLabel(),
                         style: const TextStyle(
                             fontSize:   15,
                             fontWeight: FontWeight.w600,
@@ -152,7 +147,7 @@ class _AlertCard extends StatelessWidget {
                         color:        _statusBg,
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: Text(alert.status.label,
+                      child: Text(_statusLabel(),
                           style: TextStyle(
                               fontSize:   11,
                               fontWeight: FontWeight.w600,
@@ -209,15 +204,17 @@ class _AlertCard extends StatelessWidget {
                           fontSize: 11, color: AgentColors.textMuted),
                     ),
                     const SizedBox(width: 12),
-                    const Icon(Icons.location_on_outlined,
-                        size: 12, color: AgentColors.textMuted),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${alert.agentLat}, '
-                      '${alert.agentLng}',
-                      style: const TextStyle(
-                          fontSize: 11, color: AgentColors.textMuted),
-                    ),
+                    if (alert.agentLat != null && alert.agentLng != null) ...[
+                      const Icon(Icons.location_on_outlined,
+                          size: 12, color: AgentColors.textMuted),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${alert.agentLat!.toStringAsFixed(4)}, '
+                        '${alert.agentLng!.toStringAsFixed(4)}',
+                        style: const TextStyle(
+                            fontSize: 11, color: AgentColors.textMuted),
+                      ),
+                    ],
                   ]),
                 ],
               ),
@@ -229,14 +226,17 @@ class _AlertCard extends StatelessWidget {
   String _formatDate(DateTime dt) {
     final now  = DateTime.now();
     final diff = now.difference(dt);
-    if (diff.inMinutes < 60) return 'Il y a ${diff.inMinutes} min';
-    if (diff.inHours < 24)  return 'Il y a ${diff.inHours}h';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} min';
+    if (diff.inHours < 24)  return '${diff.inHours}h';
     return '${dt.day}/${dt.month}/${dt.year}';
   }
 }
 
+// ── Empty View ───────────────────────────────────────────────
+
 class _EmptyView extends StatelessWidget {
-  const _EmptyView();
+  final AppLocalizations l10n;
+  const _EmptyView({required this.l10n});
 
   @override
   Widget build(BuildContext context) => Center(
@@ -247,24 +247,31 @@ class _EmptyView extends StatelessWidget {
                 size: 64,
                 color: AgentColors.textMuted.withOpacity(0.4)),
             const SizedBox(height: 16),
-            const Text('Aucune alerte déclarée',
-                style: TextStyle(
+            Text(l10n.myAlertsEmpty,
+                style: const TextStyle(
                     fontSize:   16,
                     fontWeight: FontWeight.w600,
                     color:      AgentColors.textSecondary)),
             const SizedBox(height: 6),
-            const Text('Vos alertes apparaîtront ici',
-                style: TextStyle(
+            Text(l10n.myAlertsEmptySub,
+                style: const TextStyle(
                     fontSize: 13, color: AgentColors.textMuted)),
           ],
         ),
       );
 }
 
+// ── Error View ───────────────────────────────────────────────
+
 class _ErrorView extends StatelessWidget {
   final String       message;
+  final String       retryLabel;
   final VoidCallback onRetry;
-  const _ErrorView({required this.message, required this.onRetry});
+  const _ErrorView({
+    required this.message,
+    required this.retryLabel,
+    required this.onRetry,
+  });
 
   @override
   Widget build(BuildContext context) => Center(
@@ -287,7 +294,7 @@ class _ErrorView extends StatelessWidget {
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10)),
               ),
-              child: const Text('Réessayer'),
+              child: Text(retryLabel),
             ),
           ],
         ),

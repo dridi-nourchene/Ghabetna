@@ -1,7 +1,10 @@
+// lib/core/widgets/main_scaffold.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 import 'package:agent_app/core/theme/app_colors.dart';
+import 'package:agent_app/core/widgets/lang_toggle.dart';
 import 'package:agent_app/features/auth/providers/auth_provider.dart';
 
 class MainScaffold extends ConsumerWidget {
@@ -24,25 +27,58 @@ class MainScaffold extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedIndex = _selectedIndex(location);
+    final l10n          = AppLocalizations.of(context)!;
 
     return Scaffold(
       backgroundColor: AgentColors.bgPage,
+
+      // ── AppBar global avec le toggle ─────────────────
+      appBar: AppBar(
+        backgroundColor:   Colors.white,
+        elevation:         0,
+        automaticallyImplyLeading: false,
+        centerTitle:       false,
+        title: Row(children: [
+          Image.asset(
+            'assets/images/logo.png',
+            width: 32, height: 32,
+            errorBuilder: (_, __, ___) => Container(
+              width: 32, height: 32,
+              decoration: BoxDecoration(
+                color:        AgentColors.primary,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.park, color: Colors.white, size: 18),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(l10n.appTitle,
+              style: const TextStyle(
+                  fontSize:   17,
+                  fontWeight: FontWeight.w700,
+                  color:      AgentColors.textPrimary)),
+        ]),
+        actions: const [
+          LangToggle(),
+          SizedBox(width: 12),
+        ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(0.5),
+          child: Container(height: 0.5, color: const Color(0xFFE8EDE8)),
+        ),
+      ),
+
       body: child,
+
       bottomNavigationBar: _GhabetnaBottomNav(
         selectedIndex: selectedIndex,
+        l10n: l10n,
         onTap: (index) async {
           switch (index) {
-            case 0:
-              context.go('/home');
-              break;
-            case 1:
-              context.go('/create-alert');
-              break;
-            case 2:
-              context.go('/my-alerts');
-              break;
+            case 0: context.go('/home');         break;
+            case 1: context.go('/create-alert'); break;
+            case 2: context.go('/my-alerts');    break;
             case 3:
-              // Logout
               await ref.read(authProvider.notifier).logout();
               if (context.mounted) context.go('/login');
               break;
@@ -55,10 +91,12 @@ class MainScaffold extends ConsumerWidget {
 
 class _GhabetnaBottomNav extends StatelessWidget {
   final int selectedIndex;
+  final AppLocalizations l10n;
   final void Function(int) onTap;
 
   const _GhabetnaBottomNav({
     required this.selectedIndex,
+    required this.l10n,
     required this.onTap,
   });
 
@@ -84,27 +122,27 @@ class _GhabetnaBottomNav extends StatelessWidget {
             children: [
               _NavItem(
                 icon:     Icons.home_rounded,
-                label:    'Accueil',
+                label:    l10n.navHome,
                 selected: selectedIndex == 0,
                 onTap:    () => onTap(0),
               ),
               _NavItem(
                 icon:     Icons.warning_amber_rounded,
-                label:    'Alerte',
+                label:    l10n.navAlert,
                 selected: selectedIndex == 1,
                 onTap:    () => onTap(1),
               ),
               _NavItem(
                 icon:     Icons.list_alt_rounded,
-                label:    'Historique',
+                label:    l10n.navHistory,
                 selected: selectedIndex == 2,
                 onTap:    () => onTap(2),
               ),
               _NavItem(
                 icon:     Icons.logout_rounded,
-                label:    'Déconnexion',
+                label:    l10n.navLogout,
                 selected: false,
-                onTap:    () => _confirmLogout(context, () => onTap(3)),
+                onTap:    () => _confirmLogout(context, l10n, () => onTap(3)),
                 isLogout: true,
               ),
             ],
@@ -114,22 +152,23 @@ class _GhabetnaBottomNav extends StatelessWidget {
     );
   }
 
-  void _confirmLogout(BuildContext context, VoidCallback onConfirm) {
+  void _confirmLogout(
+      BuildContext context, AppLocalizations l10n, VoidCallback onConfirm) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Déconnexion',
-            style: TextStyle(
+        title: Text(l10n.logoutTitle,
+            style: const TextStyle(
                 fontSize: 17, fontWeight: FontWeight.w700,
                 color: Color(0xFF1A2E1A))),
-        content: const Text('Voulez-vous vraiment vous déconnecter ?',
-            style: TextStyle(fontSize: 14, color: Color(0xFF4A6454))),
+        content: Text(l10n.logoutMessage,
+            style: const TextStyle(fontSize: 14, color: Color(0xFF4A6454))),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Annuler',
-                style: TextStyle(color: Color(0xFF8FA896))),
+            child: Text(l10n.logoutCancel,
+                style: const TextStyle(color: Color(0xFF8FA896))),
           ),
           ElevatedButton(
             onPressed: () {
@@ -143,7 +182,7 @@ class _GhabetnaBottomNav extends StatelessWidget {
                   borderRadius: BorderRadius.circular(10)),
               elevation: 0,
             ),
-            child: const Text('Déconnecter'),
+            child: Text(l10n.logoutConfirm),
           ),
         ],
       ),
@@ -168,9 +207,9 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final activeColor  = const Color(0xFF1A4731);
+    final activeColor   = const Color(0xFF1A4731);
     final inactiveColor = const Color(0xFF8FA896);
-    final logoutColor  = const Color(0xFFE05C2A);
+    final logoutColor   = const Color(0xFFE05C2A);
 
     final color = isLogout
         ? logoutColor
