@@ -1,7 +1,7 @@
 // features/alert/screens/my_alerts_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import 'package:agent_app/l10n/app_localizations.dart';
 import 'package:agent_app/core/theme/app_colors.dart';
 import 'package:agent_app/features/alert/models/alert_model.dart';
 import 'package:agent_app/features/alert/providers/alert_provider.dart';
