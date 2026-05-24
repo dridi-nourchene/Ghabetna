@@ -72,7 +72,6 @@ class _TopBar extends StatelessWidget {
           ),
           const _LogoArea(),
           const SizedBox(width: 4),
-          const _SearchBar(),
           const Spacer(),
           const _NotifButton(),
           const SizedBox(width: 10),
@@ -158,37 +157,6 @@ class _LogoArea extends StatelessWidget {
       );
 }
 
-class _SearchBar extends StatelessWidget {
-  const _SearchBar();
-
-  @override
-  Widget build(BuildContext context) => Container(
-        width: 220, height: 34,
-        decoration: BoxDecoration(
-          color: AppColors.bgInput,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: AppColors.border, width: 0.5),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: Row(children: [
-          const Icon(Icons.search, size: 14, color: AppColors.textMuted),
-          const SizedBox(width: 8),
-          const Expanded(
-            child: Text('Rechercher...',
-                style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-            decoration: BoxDecoration(
-              color:        const Color(0xFFEFF1EC),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: const Text('⌘F',
-                style: TextStyle(fontSize: 10, color: Color(0xFFC0C8B8))),
-          ),
-        ]),
-      );
-}
 
 class _NotifButton extends StatelessWidget {
   const _NotifButton();
@@ -321,13 +289,6 @@ class _Sidebar extends StatelessWidget {
                   icon:            Icons.grid_view_rounded,
                   label:           'Dashboard',
                   route:           '/admin/dashboard',
-                  currentLocation: location,
-                  expanded:        expanded,
-                ),
-                _SidebarItem(
-                  icon:            Icons.map_outlined,
-                  label:           'Carte & Alertes',
-                  route:           '/admin/map',
                   currentLocation: location,
                   expanded:        expanded,
                 ),

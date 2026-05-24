@@ -1,4 +1,4 @@
-// features/alert/models/alert_map_model.dart
+
 
 enum AlertType {
   incendie,
@@ -19,16 +19,15 @@ enum AlertType {
 
   String get emoji => switch (this) {
         AlertType.incendie   => '🔥',
-        AlertType.vol        => '🔒',
+        AlertType.vol        => '🚨',
         AlertType.inondation => '💧',
         AlertType.glissement => '⛰️',
         AlertType.maladie    => '🌿',
         AlertType.autre      => '⚠️',
       };
 
-  static AlertType fromString(String v) =>
-      AlertType.values.firstWhere((e) => e.name == v,
-          orElse: () => AlertType.autre);
+  static AlertType fromString(String s) =>
+      AlertType.values.firstWhere((e) => e.name == s, orElse: () => AlertType.autre);
 }
 
 enum AlertStatus {
@@ -42,32 +41,28 @@ enum AlertStatus {
         AlertStatus.rejeter  => 'Rejetée',
       };
 
-  static AlertStatus fromString(String v) =>
-      AlertStatus.values.firstWhere((e) => e.name == v,
-          orElse: () => AlertStatus.en_cours);
+  static AlertStatus fromString(String s) =>
+      AlertStatus.values.firstWhere((e) => e.name == s, orElse: () => AlertStatus.en_cours);
 }
 
-// ── Source de localisation ────────────────────────────────────
 enum LocationSource {
   exif,
   agent_gps,
   forest_only;
 
-  static LocationSource fromString(String v) =>
-      LocationSource.values.firstWhere((e) => e.name == v,
-          orElse: () => LocationSource.forest_only);
+  static LocationSource fromString(String s) =>
+      LocationSource.values.firstWhere((e) => e.name == s, orElse: () => LocationSource.forest_only);
 }
 
-// ── Point léger pour la map (polling) ────────────────────────
-// incident_lat / incident_lng peuvent être null (pas d'EXIF)
-// Dans ce cas on utilise le centroïde de la forêt côté Flutter
+
+// ── Map point (léger) ─────────────────────────────────────────
 
 class AlertMapPoint {
   final String         id;
   final AlertType      type;
   final AlertStatus    status;
-  final double?        incidentLat;    // null si pas d'EXIF
-  final double?        incidentLng;    // null si pas d'EXIF
+  final double?        incidentLat;
+  final double?        incidentLng;
   final LocationSource locationSource;
   final String         forestId;
   final DateTime       createdAt;
@@ -83,24 +78,23 @@ class AlertMapPoint {
     required this.createdAt,
   });
 
-  /// Retourne true si on a des coordonnées EXIF précises
   bool get hasExactLocation =>
       incidentLat != null && incidentLng != null;
 
   factory AlertMapPoint.fromJson(Map<String, dynamic> j) => AlertMapPoint(
-        id:             j['id'],
-        type:           AlertType.fromString(j['type']),
-        status:         AlertStatus.fromString(j['status']),
+        id:             j['id'] as String,
+        type:           AlertType.fromString(j['type'] as String),
+        status:         AlertStatus.fromString(j['status'] as String),
         incidentLat:    (j['incident_lat'] as num?)?.toDouble(),
         incidentLng:    (j['incident_lng'] as num?)?.toDouble(),
-        locationSource: LocationSource.fromString(
-            j['location_source'] ?? 'forest_only'),
-        forestId:       j['forest_id'],
-        createdAt:      DateTime.parse(j['created_at']),
+        locationSource: LocationSource.fromString(j['location_source'] as String),
+        forestId:       j['forest_id'] as String,
+        createdAt:      DateTime.parse(j['created_at'] as String),
       );
 }
 
-// ── Détail complet (popup admin) ──────────────────────────────
+
+// ── Détail complet ────────────────────────────────────────────
 
 class AlertDetail {
   final String         id;
@@ -115,10 +109,11 @@ class AlertDetail {
   final String?        imageUrl;
   final String         agentId;
   final String         forestId;
-  final String?        adminComment;
-  final String?        adminId;
+  final String?        supervisorComment;
+  final String?        supervisorId;
   final DateTime?      commentedAt;
   final DateTime       createdAt;
+  final DateTime?      updatedAt;
 
   const AlertDetail({
     required this.id,
@@ -133,46 +128,45 @@ class AlertDetail {
     this.imageUrl,
     required this.agentId,
     required this.forestId,
-    this.adminComment,
-    this.adminId,
+    this.supervisorComment,
+    this.supervisorId,
     this.commentedAt,
     required this.createdAt,
+    this.updatedAt,
   });
 
-  /// Distance en km entre position agent et incident (si les deux disponibles)
   double? get distanceKm {
-    if (incidentLat == null || incidentLng == null ||
-        agentLat == null || agentLng == null) return null;
-    // Formule Haversine simplifiée
+    if (incidentLat == null || agentLat == null) return null;
+    // Haversine simplifié
     const r = 6371.0;
-    final dLat = (incidentLat! - agentLat!) * 3.14159 / 180;
-    final dLng = (incidentLng! - agentLng!) * 3.14159 / 180;
+    final dLat = (incidentLat! - agentLat!) * 3.14159265 / 180;
+    final dLng = (incidentLng! - agentLng!) * 3.14159265 / 180;
     final a = (dLat / 2) * (dLat / 2) +
-        ((agentLat! * 3.14159 / 180) *
-            (incidentLat! * 3.14159 / 180) *
-            (dLng / 2) * (dLng / 2));
+        (dLng / 2) * (dLng / 2);
     return r * 2 * (a < 1 ? a : 1);
   }
 
   factory AlertDetail.fromJson(Map<String, dynamic> j) => AlertDetail(
-        id:             j['id'],
-        type:           AlertType.fromString(j['type']),
-        status:         AlertStatus.fromString(j['status']),
-        description:    j['description'],
-        incidentLat:    (j['incident_lat'] as num?)?.toDouble(),
-        incidentLng:    (j['incident_lng'] as num?)?.toDouble(),
-        agentLat:       (j['agent_lat']    as num?)?.toDouble(),
-        agentLng:       (j['agent_lng']    as num?)?.toDouble(),
-        locationSource: LocationSource.fromString(
-            j['location_source'] ?? 'forest_only'),
-        imageUrl:       j['image_url'],
-        agentId:        j['agent_id'],
-        forestId:       j['forest_id'],
-        adminComment:   j['admin_comment'],
-        adminId:        j['admin_id'],
-        commentedAt:    j['commented_at'] != null
-            ? DateTime.parse(j['commented_at'])
+        id:                j['id'] as String,
+        type:              AlertType.fromString(j['type'] as String),
+        status:            AlertStatus.fromString(j['status'] as String),
+        description:       j['description'] as String?,
+        incidentLat:       (j['incident_lat'] as num?)?.toDouble(),
+        incidentLng:       (j['incident_lng'] as num?)?.toDouble(),
+        agentLat:          (j['agent_lat'] as num?)?.toDouble(),
+        agentLng:          (j['agent_lng'] as num?)?.toDouble(),
+        locationSource:    LocationSource.fromString(j['location_source'] as String),
+        imageUrl:          j['image_url'] as String?,
+        agentId:           j['agent_id'] as String,
+        forestId:          j['forest_id'] as String,
+        supervisorComment: j['supervisor_comment'] as String?,
+        supervisorId:      j['supervisor_id'] as String?,
+        commentedAt:       j['commented_at'] != null
+            ? DateTime.tryParse(j['commented_at'] as String)
             : null,
-        createdAt:      DateTime.parse(j['created_at']),
+        createdAt:         DateTime.parse(j['created_at'] as String),
+        updatedAt:         j['updated_at'] != null
+            ? DateTime.tryParse(j['updated_at'] as String)
+            : null,
       );
 }

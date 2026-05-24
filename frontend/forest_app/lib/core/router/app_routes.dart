@@ -1,4 +1,5 @@
 // core/router/app_routes.dart
+// MISE À JOUR : ajout routes superviseur
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,6 +19,10 @@ import '../../features/admin/screens/admin_create_parcelle_screen.dart';
 import '../../features/admin/screens/admin_assign_agents_screen.dart';
 import '../../features/admin/screens/admin_map_screen.dart';
 import '../../features/admin/screens/admin_assign_superviseurs_screen.dart';
+// ── SUPERVISEUR ───────────────────────────────────────────────
+import '../../features/supervisor/screens/supervisor_shell.dart';
+import '../../features/supervisor/screens/supervisor_map_screen.dart';
+import '../../features/supervisor/screens/supervisor_historique_screen.dart';
 
 class _PlaceholderScreen extends StatelessWidget {
   final String name;
@@ -50,7 +55,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       if (isLoggedIn && isLoginPage) {
         return switch (authState.role) {
           'admin'      => '/admin/dashboard',
-          'supervisor' => '/supervisor/dashboard',
+          'supervisor' => '/supervisor/map',   // ← superviseur → carte directement
           'agent'      => '/agent/dashboard',
           _            => '/login',
         };
@@ -70,18 +75,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ),
       ),
 
-      // ── ADMIN shell ──────────────────────────────────────────
+      // ══════════════════════════════════════════════════════
+      //  ADMIN shell
+      // ══════════════════════════════════════════════════════
       ShellRoute(
         builder: (_, __, child) => AdminShell(child: child),
         routes: [
-
-          // Dashboard
           GoRoute(
             path:    '/admin/dashboard',
             builder: (_, __) => const AdminDashboard(),
           ),
 
-          // ── Users ────────────────────────────────────────────
+          // ── Users ──────────────────────────────────────
           GoRoute(
             path:    '/admin/users',
             builder: (_, __) => const AdminUsersScreen(),
@@ -97,7 +102,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ),
           ),
 
-          // ── Forests ──────────────────────────────────────────
+          // ── Forests ────────────────────────────────────
           GoRoute(
             path:    '/admin/forests',
             builder: (_, __) => const AdminForestsScreen(),
@@ -113,7 +118,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ),
           ),
 
-          // ── Parcelles ────────────────────────────────────────
+          // ── Parcelles ──────────────────────────────────
           GoRoute(
             path:    '/admin/forests/:forestId/parcelles/new',
             builder: (_, state) => AdminCreateParcelleScreen(
@@ -132,7 +137,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, __) => const AdminMapScreen(),
           ),
 
-          // ── Affectations ─────────────────────────────────────
+          // ── Affectations ───────────────────────────────
           GoRoute(
             path:    '/admin/assign/agents',
             builder: (_, __) => const AdminAssignAgentsScreen(),
@@ -142,7 +147,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, __) => const AdminAssignSuperveursScreen(),
           ),
 
-          // ── Autres ───────────────────────────────────────────
+          // ── Autres ─────────────────────────────────────
           GoRoute(
             path:    '/admin/alerts',
             builder: (_, __) => const _PlaceholderScreen('Alertes'),
@@ -158,10 +163,40 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ],
       ),
 
-      GoRoute(
-        path:    '/supervisor/dashboard',
-        builder: (_, __) => const _PlaceholderScreen('Supervisor Dashboard'),
+      // ══════════════════════════════════════════════════════
+      //  SUPERVISEUR shell
+      // ══════════════════════════════════════════════════════
+      ShellRoute(
+        builder: (_, __, child) => SupervisorShell(child: child),
+        routes: [
+          // Carte avec alertes temps réel (page d'accueil superviseur)
+          GoRoute(
+            path:    '/supervisor/map',
+            builder: (_, __) => const SupervisorMapScreen(),
+          ),
+          // Historique des alertes avec filtres
+          GoRoute(
+            path:    '/supervisor/alerts',
+            builder: (_, __) => const SupervisorAlertHistoryScreen(),
+          ),
+          // Placeholder forêts (lecture seule)
+          GoRoute(
+            path:    '/supervisor/forests',
+            builder: (_, __) =>
+                const _PlaceholderScreen('Forêts — vue superviseur'),
+          ),
+          // Placeholder paramètres
+          GoRoute(
+            path:    '/supervisor/settings',
+            builder: (_, __) =>
+                const _PlaceholderScreen('Paramètres superviseur'),
+          ),
+        ],
       ),
+
+      // ══════════════════════════════════════════════════════
+      //  AGENT
+      // ══════════════════════════════════════════════════════
       GoRoute(
         path:    '/agent/dashboard',
         builder: (_, __) => const _PlaceholderScreen('Agent Dashboard'),

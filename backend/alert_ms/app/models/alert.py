@@ -23,9 +23,9 @@ class AlertStatus(str, enum.Enum):
 
 
 class LocationSource(str, enum.Enum):
-    exif        = "exif"        # GPS depuis EXIF photo
-    agent_gps   = "agent_gps"  # GPS téléphone agent
-    forest_only = "forest_only" # Pas de coordonnées précises
+    exif        = "exif"
+    agent_gps   = "agent_gps"
+    forest_only = "forest_only"
 
 
 class Alert(Base):
@@ -38,15 +38,14 @@ class Alert(Base):
                          server_default="en_cours")
     description = Column(Text, nullable=True)
 
-    # ── Localisation incident (EXIF) — peut être null ─────
+    # ── Localisation incident (EXIF) ──────────────────────
     incident_lat = Column(Float, nullable=True)
     incident_lng = Column(Float, nullable=True)
 
-    # ── Localisation agent au moment du submit ────────────
+    # ── Localisation agent ────────────────────────────────
     agent_lat    = Column(Float, nullable=True)
     agent_lng    = Column(Float, nullable=True)
 
-    # ── Source de la localisation ─────────────────────────
     location_source = Column(
         SAEnum(LocationSource),
         nullable=False,
@@ -54,16 +53,15 @@ class Alert(Base):
         server_default="forest_only",
     )
 
-    # ── Géométrie PostGIS — uniquement si EXIF présent ────
     geom        = Column(Geometry("POINT", srid=4326), nullable=True)
-
     image_path  = Column(String(512), nullable=True)
     agent_id    = Column(UUID(as_uuid=True), nullable=False)
     forest_id   = Column(UUID(as_uuid=True), nullable=False)
 
-    admin_comment = Column(Text,                    nullable=True)
-    admin_id      = Column(UUID(as_uuid=True),      nullable=True)
-    commented_at  = Column(DateTime(timezone=True), nullable=True)
-    created_at    = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at    = Column(DateTime(timezone=True), onupdate=func.now(),
-                           nullable=True)
+    # ── Superviseur (remplace admin) ──────────────────────
+    supervisor_comment = Column(Text,                    nullable=True)
+    supervisor_id      = Column(UUID(as_uuid=True),      nullable=True)
+    commented_at       = Column(DateTime(timezone=True), nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)

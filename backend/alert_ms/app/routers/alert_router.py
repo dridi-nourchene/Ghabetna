@@ -1,10 +1,11 @@
 from uuid import UUID
 from typing import Optional
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
+import json
 
 from app.db.database import get_db
-from app.core.dependencies import get_current_user_id, require_admin
+from app.core.dependencies import get_current_user_id, require_supervisor
 from app.models.alert import AlertType, AlertStatus
 from app.schemas.alert import AlertStatusUpdate
 from app.services import alert_service
@@ -12,15 +13,15 @@ from app.services import alert_service
 router = APIRouter(prefix="/api/alerts", tags=["Alertes"])
 
 
+# ── CREATE (agent) ────────────────────────────────────────────
+
 @router.post("/", status_code=201)
 async def create_alert(
     type:         AlertType      = Form(...),
     forest_id:    UUID           = Form(...),
     description:  Optional[str]  = Form(None),
-    # EXIF depuis la photo
     incident_lat: Optional[float] = Form(None),
     incident_lng: Optional[float] = Form(None),
-    # GPS téléphone agent
     agent_lat:    Optional[float] = Form(None),
     agent_lng:    Optional[float] = Form(None),
     image:        Optional[UploadFile] = File(None),
@@ -29,18 +30,14 @@ async def create_alert(
 ):
     from app.schemas.alert import AlertCreate
     data = AlertCreate(
-        type         = type,
-        description  = description,
-        forest_id    = forest_id,
-        incident_lat = incident_lat,
-        incident_lng = incident_lng,
-        agent_lat    = agent_lat,
-        agent_lng    = agent_lng,
+        type=type, description=description, forest_id=forest_id,
+        incident_lat=incident_lat, incident_lng=incident_lng,
+        agent_lat=agent_lat, agent_lng=agent_lng,
     )
-    return await alert_service.create_alert(
-        db=db, data=data, agent_id=agent_id, image=image
-    )
+    return await alert_service.create_alert(db=db, data=data, agent_id=agent_id, image=image)
 
+
+# ── MINE (agent) ──────────────────────────────────────────────
 
 @router.get("/mine")
 async def get_my_alerts(
@@ -50,22 +47,38 @@ async def get_my_alerts(
     return await alert_service.get_agent_alerts(db, agent_id)
 
 
-@router.get("/map")
-async def get_map_points(
-    db: AsyncSession = Depends(get_db),
-    _:  UUID         = Depends(get_current_user_id),
+# ── MAP (supervisor — forêts assignées) ───────────────────────
+
+@router.get("/supervisor/map")
+async def get_supervisor_map(
+    db:            AsyncSession = Depends(get_db),
+    supervisor_id: UUID         = Depends(require_supervisor),
+    x_forest_ids:  Optional[str] = Header(None, alias="X-Forest-Ids"),
 ):
-    return await alert_service.get_map_points(db)
+    """
+    Retourne les points carte pour les forêts assignées au superviseur.
+    X-Forest-Ids est injecté par le gateway (liste JSON d'UUIDs).
+    """
+    forest_ids = _parse_forest_ids(x_forest_ids)
+    return await alert_service.get_supervisor_map_points(db, forest_ids)
 
 
-@router.get("/")
-async def get_all_alerts(
-    status: Optional[AlertStatus] = None,
-    db:     AsyncSession          = Depends(get_db),
-    _:      UUID                  = Depends(require_admin),
+# ── LIST (supervisor — forêts assignées) ─────────────────────
+
+@router.get("/supervisor")
+async def get_supervisor_alerts(
+    status:        Optional[AlertStatus] = None,
+    db:            AsyncSession          = Depends(get_db),
+    supervisor_id: UUID                  = Depends(require_supervisor),
+    x_forest_ids:  Optional[str]         = Header(None, alias="X-Forest-Ids"),
 ):
-    return await alert_service.get_all_alerts(db, status)
+    forest_ids = _parse_forest_ids(x_forest_ids)
+    return await alert_service.get_supervisor_alerts(
+        db, supervisor_id, forest_ids, status
+    )
 
+
+# ── GET BY ID ─────────────────────────────────────────────────
 
 @router.get("/{alert_id}")
 async def get_alert(
@@ -76,11 +89,30 @@ async def get_alert(
     return await alert_service.get_alert_by_id(db, alert_id)
 
 
+# ── UPDATE STATUS (supervisor) ────────────────────────────────
+
 @router.patch("/{alert_id}/status")
 async def update_status(
-    alert_id: UUID,
-    data:     AlertStatusUpdate,
-    db:       AsyncSession = Depends(get_db),
-    admin_id: UUID         = Depends(require_admin),
+    alert_id:      UUID,
+    data:          AlertStatusUpdate,
+    db:            AsyncSession  = Depends(get_db),
+    supervisor_id: UUID          = Depends(require_supervisor),
+    x_forest_ids:  Optional[str] = Header(None, alias="X-Forest-Ids"),
 ):
-    return await alert_service.update_alert_status(db, alert_id, data, admin_id)
+    forest_ids = _parse_forest_ids(x_forest_ids)
+    return await alert_service.update_alert_status(
+        db, alert_id, data, supervisor_id, forest_ids
+    )
+
+
+# ── HELPER ────────────────────────────────────────────────────
+
+def _parse_forest_ids(raw: Optional[str]) -> list[UUID]:
+    """Parse X-Forest-Ids header : JSON array of UUID strings."""
+    if not raw:
+        return []
+    try:
+        ids = json.loads(raw)
+        return [UUID(i) for i in ids]
+    except Exception:
+        return []

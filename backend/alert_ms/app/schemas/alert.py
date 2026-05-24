@@ -10,18 +10,16 @@ class AlertCreate(BaseModel):
     description: Optional[str] = None
     forest_id:   UUID
 
-    # Depuis EXIF photo
     incident_lat: Optional[float] = None
     incident_lng: Optional[float] = None
 
-    # Depuis GPS téléphone
     agent_lat:    Optional[float] = None
     agent_lng:    Optional[float] = None
 
 
 class AlertStatusUpdate(BaseModel):
-    status:        AlertStatus
-    admin_comment: Optional[str] = None
+    status:             AlertStatus
+    supervisor_comment: Optional[str] = None
 
 
 class AlertResponse(BaseModel):
@@ -30,23 +28,21 @@ class AlertResponse(BaseModel):
     status:         AlertStatus
     description:    Optional[str]
 
-    # Localisation incident
     incident_lat:   Optional[float]
     incident_lng:   Optional[float]
-
-    # Localisation agent
     agent_lat:      Optional[float]
     agent_lng:      Optional[float]
 
-    location_source: LocationSource
-    image_url:       Optional[str]
-    agent_id:        UUID
-    forest_id:       UUID
-    admin_comment:   Optional[str]
-    admin_id:        Optional[UUID]
-    commented_at:    Optional[datetime]
-    created_at:      datetime
-    updated_at:      Optional[datetime]
+    location_source:    LocationSource
+    image_url:          Optional[str]
+    agent_id:           UUID
+    forest_id:          UUID
+
+    supervisor_comment: Optional[str]
+    supervisor_id:      Optional[UUID]
+    commented_at:       Optional[datetime]
+    created_at:         datetime
+    updated_at:         Optional[datetime]
 
     model_config = {"from_attributes": True}
 

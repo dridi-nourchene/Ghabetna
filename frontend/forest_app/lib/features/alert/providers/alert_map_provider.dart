@@ -1,33 +1,48 @@
-// features/alert/providers/alert_map_provider.dart
+// lib/features/alert/providers/supervisor_alert_provider.dart
 
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:forest_app/features/alert/models/alert_map_model.dart';
-import 'package:forest_app/features/alert/services/alert_map_service.dart';
+import '../models/alert_model.dart';
+import '../repositories/alert_repository.dart';
+import '../../auth/providers/auth_provider.dart';
+import '../../../core/config/api_config.dart';
 
-// ── State map alertes ─────────────────────────────────────────
+// ── Repository provider ───────────────────────────────────────
 
-class AlertMapState {
+final alertRepositoryProvider = Provider<AlertRepository>((ref) {
+  final auth = ref.watch(authProvider);
+  return AlertRepository(
+    baseUrl:  ApiConfig.baseUrl,
+    getToken: () => auth.accessToken ?? '',
+  );
+});
+
+
+// ═══════════════════════════════════════════════════════════════
+//  MAP STATE — polling toutes les 30s
+// ═══════════════════════════════════════════════════════════════
+
+class SupervisorMapState {
   final List<AlertMapPoint> points;
   final bool                isLoading;
   final String?             error;
   final DateTime?           lastRefresh;
 
-  const AlertMapState({
+  const SupervisorMapState({
     this.points      = const [],
     this.isLoading   = false,
     this.error,
     this.lastRefresh,
   });
 
-  AlertMapState copyWith({
+  SupervisorMapState copyWith({
     List<AlertMapPoint>? points,
     bool?                isLoading,
     String?              error,
-    bool                 clearError = false,
     DateTime?            lastRefresh,
+    bool                 clearError = false,
   }) =>
-      AlertMapState(
+      SupervisorMapState(
         points:      points      ?? this.points,
         isLoading:   isLoading   ?? this.isLoading,
         error:       clearError  ? null : (error ?? this.error),
@@ -35,81 +50,127 @@ class AlertMapState {
       );
 }
 
-class AlertMapNotifier extends StateNotifier<AlertMapState> {
-  final _service = AlertMapService();
-  Timer? _pollingTimer;
+class SupervisorMapNotifier extends StateNotifier<SupervisorMapState> {
+  final AlertRepository _repo;
+  Timer? _timer;
 
-  AlertMapNotifier() : super(const AlertMapState());
-
-  // ── Démarrer le polling ───────────────────────────────────
+  SupervisorMapNotifier(this._repo) : super(const SupervisorMapState());
 
   void startPolling() {
-    // Charger immédiatement
     _fetch();
-    // Puis toutes les 30 secondes
-    _pollingTimer = Timer.periodic(
-      const Duration(seconds: 30),
-      (_) => _fetch(),
-    );
+    _timer = Timer.periodic(const Duration(seconds: 30), (_) => _fetch());
   }
 
   void stopPolling() {
-    _pollingTimer?.cancel();
-    _pollingTimer = null;
+    _timer?.cancel();
+    _timer = null;
   }
 
   Future<void> refreshNow() => _fetch();
 
   Future<void> _fetch() async {
-    // Si premier chargement → afficher spinner
-    // Si refresh → pas de spinner (silencieux)
-    if (state.points.isEmpty) {
-      state = state.copyWith(isLoading: true, clearError: true);
-    }
-
+    state = state.copyWith(isLoading: true, clearError: true);
     try {
-      final points = await _service.getMapPoints();
+      final points = await _repo.getSupervisorMapPoints();
       state = state.copyWith(
         points:      points,
         isLoading:   false,
-        clearError:  true,
         lastRefresh: DateTime.now(),
       );
     } catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        error:     e.toString().replaceAll('Exception: ', ''),
-      );
+      state = state.copyWith(isLoading: false, error: e.toString());
     }
   }
 
   @override
   void dispose() {
-    stopPolling();
+    _timer?.cancel();
     super.dispose();
   }
 }
 
-final alertMapProvider =
-    StateNotifierProvider<AlertMapNotifier, AlertMapState>(
-  (ref) => AlertMapNotifier(),
-);
+final supervisorMapProvider =
+    StateNotifierProvider<SupervisorMapNotifier, SupervisorMapState>((ref) {
+  final repo = ref.watch(alertRepositoryProvider);
+  return SupervisorMapNotifier(repo);
+});
 
-// ── State détail alerte (popup) ───────────────────────────────
+
+// ═══════════════════════════════════════════════════════════════
+//  HISTORIQUE STATE
+// ═══════════════════════════════════════════════════════════════
+
+class HistoriqueState {
+  final List<AlertDetail> alerts;
+  final bool              isLoading;
+  final String?           error;
+  final String?           filterStatus; // null = toutes
+
+  const HistoriqueState({
+    this.alerts       = const [],
+    this.isLoading    = false,
+    this.error,
+    this.filterStatus,
+  });
+
+  HistoriqueState copyWith({
+    List<AlertDetail>? alerts,
+    bool?              isLoading,
+    String?            error,
+    String?            filterStatus,
+    bool               clearError = false,
+    bool               clearFilter = false,
+  }) =>
+      HistoriqueState(
+        alerts:       alerts       ?? this.alerts,
+        isLoading:    isLoading    ?? this.isLoading,
+        error:        clearError   ? null : (error ?? this.error),
+        filterStatus: clearFilter  ? null : (filterStatus ?? this.filterStatus),
+      );
+}
+
+class HistoriqueNotifier extends StateNotifier<HistoriqueState> {
+  final AlertRepository _repo;
+
+  HistoriqueNotifier(this._repo) : super(const HistoriqueState());
+
+  Future<void> load({String? status}) async {
+    state = state.copyWith(isLoading: true, clearError: true, filterStatus: status);
+    try {
+      final alerts = await _repo.getSupervisorAlerts(status: status);
+      state = state.copyWith(alerts: alerts, isLoading: false);
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: e.toString());
+    }
+  }
+
+  void setFilter(String? status) => load(status: status);
+
+  void clearError() => state = state.copyWith(clearError: true);
+}
+
+final historiqueProvider =
+    StateNotifierProvider<HistoriqueNotifier, HistoriqueState>((ref) {
+  final repo = ref.watch(alertRepositoryProvider);
+  return HistoriqueNotifier(repo);
+});
+
+
+// ═══════════════════════════════════════════════════════════════
+//  ALERT DETAIL STATE
+// ═══════════════════════════════════════════════════════════════
 
 class AlertDetailState {
   final AlertDetail? alert;
   final bool         isLoading;
   final bool         isUpdating;
   final String?      error;
-  final String?      successMessage;
 
   const AlertDetailState({
     this.alert,
-    this.isLoading   = false,
-    this.isUpdating  = false,
+    this.isLoading  = false,
+    this.isUpdating = false,
     this.error,
-    this.successMessage,
   });
 
   AlertDetailState copyWith({
@@ -117,34 +178,28 @@ class AlertDetailState {
     bool?        isLoading,
     bool?        isUpdating,
     String?      error,
-    bool         clearError   = false,
-    String?      successMessage,
-    bool         clearSuccess = false,
+    bool         clearError = false,
   }) =>
       AlertDetailState(
-        alert:          alert          ?? this.alert,
-        isLoading:      isLoading      ?? this.isLoading,
-        isUpdating:     isUpdating     ?? this.isUpdating,
-        error:          clearError     ? null : (error ?? this.error),
-        successMessage: clearSuccess   ? null : (successMessage ?? this.successMessage),
+        alert:      alert      ?? this.alert,
+        isLoading:  isLoading  ?? this.isLoading,
+        isUpdating: isUpdating ?? this.isUpdating,
+        error:      clearError ? null : (error ?? this.error),
       );
 }
 
 class AlertDetailNotifier extends StateNotifier<AlertDetailState> {
-  final _service = AlertMapService();
+  final AlertRepository _repo;
 
-  AlertDetailNotifier() : super(const AlertDetailState());
+  AlertDetailNotifier(this._repo) : super(const AlertDetailState());
 
-  Future<void> loadAlert(String alertId) async {
+  Future<void> load(String alertId) async {
     state = const AlertDetailState(isLoading: true);
     try {
-      final alert = await _service.getAlertDetail(alertId);
-      state = state.copyWith(alert: alert, isLoading: false);
+      final alert = await _repo.getAlertById(alertId);
+      state = AlertDetailState(alert: alert);
     } catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        error:     e.toString().replaceAll('Exception: ', ''),
-      );
+      state = AlertDetailState(error: e.toString());
     }
   }
 
@@ -153,32 +208,27 @@ class AlertDetailNotifier extends StateNotifier<AlertDetailState> {
     required String status,
     String?         comment,
   }) async {
-    state = state.copyWith(isUpdating: true, clearError: true);
+    state = state.copyWith(isUpdating: true);
     try {
-      final updated = await _service.updateAlertStatus(
-        alertId:      alertId,
-        status:       status,
-        adminComment: comment,
+      final updated = await _repo.updateStatus(
+        alertId:           alertId,
+        status:            status,
+        supervisorComment: comment,
       );
-      state = state.copyWith(
-        alert:         updated,
-        isUpdating:    false,
-        successMessage: 'Statut mis à jour avec succès',
-      );
+      state = state.copyWith(alert: updated, isUpdating: false);
       return true;
     } catch (e) {
-      state = state.copyWith(
-        isUpdating: false,
-        error:      e.toString().replaceAll('Exception: ', ''),
-      );
+      state = state.copyWith(isUpdating: false, error: e.toString());
       return false;
     }
   }
 
   void clear() => state = const AlertDetailState();
+  void clearError() => state = state.copyWith(clearError: true);
 }
 
 final alertDetailProvider =
-    StateNotifierProvider<AlertDetailNotifier, AlertDetailState>(
-  (ref) => AlertDetailNotifier(),
-);
+    StateNotifierProvider<AlertDetailNotifier, AlertDetailState>((ref) {
+  final repo = ref.watch(alertRepositoryProvider);
+  return AlertDetailNotifier(repo);
+});
