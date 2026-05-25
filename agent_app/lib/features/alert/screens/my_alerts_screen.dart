@@ -1,4 +1,4 @@
-// features/alert/screens/my_alerts_screen.dart
+// agent_app/lib/features/alert/screens/my_alerts_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:agent_app/l10n/app_localizations.dart';
@@ -166,8 +166,9 @@ class _AlertCard extends StatelessWidget {
                         overflow:  TextOverflow.ellipsis),
                   ],
 
-                  if (alert.adminComment != null &&
-                      alert.adminComment!.isNotEmpty) ...[
+                  // ← utilise supervisorComment (plus adminComment)
+                  if (alert.supervisorComment != null &&
+                      alert.supervisorComment!.isNotEmpty) ...[
                     const SizedBox(height: 10),
                     Container(
                       padding: const EdgeInsets.all(10),
@@ -178,11 +179,11 @@ class _AlertCard extends StatelessWidget {
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Icon(Icons.admin_panel_settings_outlined,
+                          const Icon(Icons.supervisor_account_outlined,
                               size: 14, color: Color(0xFF4B6CB7)),
                           const SizedBox(width: 6),
                           Expanded(
-                            child: Text(alert.adminComment!,
+                            child: Text(alert.supervisorComment!,
                                 style: const TextStyle(
                                     fontSize: 12,
                                     color:    Color(0xFF4B6CB7))),
@@ -204,17 +205,8 @@ class _AlertCard extends StatelessWidget {
                           fontSize: 11, color: AgentColors.textMuted),
                     ),
                     const SizedBox(width: 12),
-                    if (alert.agentLat != null && alert.agentLng != null) ...[
-                      const Icon(Icons.location_on_outlined,
-                          size: 12, color: AgentColors.textMuted),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${alert.agentLat!.toStringAsFixed(4)}, '
-                        '${alert.agentLng!.toStringAsFixed(4)}',
-                        style: const TextStyle(
-                            fontSize: 11, color: AgentColors.textMuted),
-                      ),
-                    ],
+                    // ← badge source GPS
+                    _LocationBadge(source: alert.locationSource),
                   ]),
                 ],
               ),
@@ -229,6 +221,28 @@ class _AlertCard extends StatelessWidget {
     if (diff.inMinutes < 60) return '${diff.inMinutes} min';
     if (diff.inHours < 24)  return '${diff.inHours}h';
     return '${dt.day}/${dt.month}/${dt.year}';
+  }
+}
+
+// ── Badge localisation ───────────────────────────────────────
+
+class _LocationBadge extends StatelessWidget {
+  final LocationSource source;
+  const _LocationBadge({required this.source});
+
+  @override
+  Widget build(BuildContext context) {
+    final (icon, color, label) = switch (source) {
+      LocationSource.exif        => (Icons.gps_fixed,        const Color(0xFF1D9E75), 'GPS photo'),
+      LocationSource.agent_gps   => (Icons.location_on,      const Color(0xFF4B6CB7), 'GPS tél.'),
+      LocationSource.forest_only => (Icons.location_searching, const Color(0xFF9E9E9E), 'Approx.'),
+    };
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(icon, size: 11, color: color),
+      const SizedBox(width: 3),
+      Text(label,
+          style: TextStyle(fontSize: 10, color: color)),
+    ]);
   }
 }
 

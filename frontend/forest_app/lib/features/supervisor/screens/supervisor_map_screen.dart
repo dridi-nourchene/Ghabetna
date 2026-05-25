@@ -379,21 +379,6 @@ class _Legend extends StatelessWidget {
                     fontSize:   11,
                     fontWeight: FontWeight.w600,
                     color:      AppColors.textSecondary)),
-            const SizedBox(height: 8),
-            Row(mainAxisSize: MainAxisSize.min, children: [
-              Container(
-                  width: 14, height: 10,
-                  decoration: BoxDecoration(
-                    color:  const Color(0x222E7D32),
-                    border: Border.all(
-                        color: const Color(0xFF2E7D32), width: 1),
-                    borderRadius: BorderRadius.circular(2),
-                  )),
-              const SizedBox(width: 6),
-              const Text('Forêt',
-                  style: TextStyle(
-                      fontSize: 10, color: AppColors.textPrimary)),
-            ]),
 
             const SizedBox(height: 4),
             _LegendTriangle(

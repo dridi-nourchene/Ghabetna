@@ -1,3 +1,4 @@
+// agent_app/lib/features/alert/models/alert_model.dart
 enum AlertType {
   incendie, vol, inondation, glissement, maladie, autre;
 
@@ -67,7 +68,10 @@ class AlertModel {
   final String?         imageUrl;
   final String          agentId;
   final String          forestId;
-  final String?         adminComment;
+  // ← renommé : supervisor_comment (plus admin_comment)
+  final String?         supervisorComment;
+  // ← renommé : supervisor_id (plus admin_id)
+  final String?         supervisorId;
   final DateTime        createdAt;
 
   const AlertModel({
@@ -83,25 +87,29 @@ class AlertModel {
     this.imageUrl,
     required this.agentId,
     required this.forestId,
-    this.adminComment,
+    this.supervisorComment,
+    this.supervisorId,
     required this.createdAt,
   });
 
   factory AlertModel.fromJson(Map<String, dynamic> j) => AlertModel(
-    id:             j['id'],
-    type:           AlertType.fromString(j['type']),
-    status:         AlertStatus.fromString(j['status']),
-    description:    j['description'],
-    incidentLat:    (j['incident_lat'] as num?)?.toDouble(),
-    incidentLng:    (j['incident_lng'] as num?)?.toDouble(),
-    agentLat:       (j['agent_lat']    as num?)?.toDouble(),
-    agentLng:       (j['agent_lng']    as num?)?.toDouble(),
-    locationSource: LocationSource.fromString(j['location_source'] ?? 'forest_only'),
-    imageUrl:       j['image_url'],
-    agentId:        j['agent_id'],
-    forestId:       j['forest_id'],
-    adminComment:   j['admin_comment'],
-    createdAt:      DateTime.parse(j['created_at']),
+    id:                j['id'],
+    type:              AlertType.fromString(j['type']),
+    status:            AlertStatus.fromString(j['status']),
+    description:       j['description'],
+    incidentLat:       (j['incident_lat'] as num?)?.toDouble(),
+    incidentLng:       (j['incident_lng'] as num?)?.toDouble(),
+    agentLat:          (j['agent_lat']    as num?)?.toDouble(),
+    agentLng:          (j['agent_lng']    as num?)?.toDouble(),
+    locationSource:    LocationSource.fromString(
+                           j['location_source'] ?? 'forest_only'),
+    imageUrl:          j['image_url'],
+    agentId:           j['agent_id'],
+    forestId:          j['forest_id'],
+    // ← nouveau nom côté backend
+    supervisorComment: j['supervisor_comment'],
+    supervisorId:      j['supervisor_id'],
+    createdAt:         DateTime.parse(j['created_at']),
   );
 }
 
