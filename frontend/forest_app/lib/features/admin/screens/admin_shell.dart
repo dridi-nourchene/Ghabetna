@@ -326,17 +326,7 @@ class _Sidebar extends StatelessWidget {
                   expanded:        expanded,
                 ),
 
-                const _SidebarDivider(),
-
-                // ── Autres ────────────────────────────────
-                _SidebarItem(
-                  icon:            Icons.notifications_none,
-                  label:           'Alertes',
-                  route:           '/admin/alerts',
-                  currentLocation: location,
-                  expanded:        expanded,
-                  badgeCount:      5,
-                ),
+               
                 _SidebarItem(
                   icon:            Icons.bar_chart_rounded,
                   label:           'Rapports',
@@ -345,15 +335,7 @@ class _Sidebar extends StatelessWidget {
                   expanded:        expanded,
                 ),
 
-                const _SidebarDivider(),
-
-                _SidebarItem(
-                  icon:            Icons.settings_outlined,
-                  label:           'Paramètres',
-                  route:           '/admin/settings',
-                  currentLocation: location,
-                  expanded:        expanded,
-                ),
+              
               ]),
             ),
           ),
