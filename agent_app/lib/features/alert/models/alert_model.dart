@@ -1,23 +1,38 @@
 // agent_app/lib/features/alert/models/alert_model.dart
+
 enum AlertType {
-  incendie, vol, inondation, glissement, maladie, autre;
+  incendie,
+  vol,
+  inondation,
+  glissement,
+  maladie,
+  depot_dechets,
+  chasse_illegale,
+  activite_suspecte,
+  autre;
 
   String get label => switch (this) {
-    AlertType.incendie   => 'Incendie',
-    AlertType.vol        => 'Vol',
-    AlertType.inondation => 'Inondation',
-    AlertType.glissement => 'Glissement de terrain',
-    AlertType.maladie    => 'Maladie forestière',
-    AlertType.autre      => 'Autre',
+    AlertType.incendie           => 'Incendie',
+    AlertType.vol                => 'Vol',
+    AlertType.inondation         => 'Inondation',
+    AlertType.glissement         => 'Glissement de terrain',
+    AlertType.maladie            => 'Maladie forestière',
+    AlertType.depot_dechets      => 'Dépôt des déchets',
+    AlertType.chasse_illegale    => 'Chasse illégale',
+    AlertType.activite_suspecte  => 'Activité suspecte',
+    AlertType.autre              => 'Autre',
   };
 
   String get emoji => switch (this) {
-    AlertType.incendie   => '🔥',
-    AlertType.vol        => '🔒',
-    AlertType.inondation => '💧',
-    AlertType.glissement => '⛰️',
-    AlertType.maladie    => '🌿',
-    AlertType.autre      => '⚠️',
+    AlertType.incendie           => '🔥',
+    AlertType.vol                => '🔒',
+    AlertType.inondation         => '💧',
+    AlertType.glissement         => '⛰️',
+    AlertType.maladie            => '🌿',
+    AlertType.depot_dechets      => '🗑️',
+    AlertType.chasse_illegale    => '🐾',
+    AlertType.activite_suspecte  => '👀',
+    AlertType.autre              => '⚠️',
   };
 
   String get value => name;
@@ -56,23 +71,21 @@ enum LocationSource {
 }
 
 class AlertModel {
-  final String          id;
-  final AlertType       type;
-  final AlertStatus     status;
-  final String?         description;
-  final double?         incidentLat;
-  final double?         incidentLng;
-  final double?         agentLat;
-  final double?         agentLng;
-  final LocationSource  locationSource;
-  final String?         imageUrl;
-  final String          agentId;
-  final String          forestId;
-  // ← renommé : supervisor_comment (plus admin_comment)
-  final String?         supervisorComment;
-  // ← renommé : supervisor_id (plus admin_id)
-  final String?         supervisorId;
-  final DateTime        createdAt;
+  final String         id;
+  final AlertType      type;
+  final AlertStatus    status;
+  final String?        description;
+  final double?        incidentLat;
+  final double?        incidentLng;
+  final double?        agentLat;
+  final double?        agentLng;
+  final LocationSource locationSource;
+  final String?        imageUrl;
+  final String         agentId;
+  final String         forestId;
+  final String?        supervisorComment;
+  final String?        supervisorId;
+  final DateTime       createdAt;
 
   const AlertModel({
     required this.id,
@@ -106,7 +119,6 @@ class AlertModel {
     imageUrl:          j['image_url'],
     agentId:           j['agent_id'],
     forestId:          j['forest_id'],
-    // ← nouveau nom côté backend
     supervisorComment: j['supervisor_comment'],
     supervisorId:      j['supervisor_id'],
     createdAt:         DateTime.parse(j['created_at']),

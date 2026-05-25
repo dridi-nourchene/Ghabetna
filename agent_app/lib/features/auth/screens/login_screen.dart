@@ -75,7 +75,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       width:  100,
                       height: 100,
                       errorBuilder: (_, __, ___) => Container(
-                        width: 72, height: 72,
+                        width: 102, height:102,
                         decoration: BoxDecoration(
                           color:        AgentColors.primary,
                           borderRadius: BorderRadius.circular(20),

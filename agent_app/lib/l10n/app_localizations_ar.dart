@@ -48,10 +48,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get loginFooter => 'المديرية العامة للغابات';
 
   @override
-  String get homeGreeting => 'مرحباً 👋';
-
-  @override
-  String get homeQuestion => 'ماذا تريد أن تفعل؟';
+  String get homeGreeting => 'مرحباً ';
 
   @override
   String get homeCreateAlert => 'الإبلاغ عن تنبيه';
@@ -175,6 +172,15 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get alertTypeMaladie => 'مرض غابوي';
+
+  @override
+  String get alertTypeDepotDechets => 'إلقاء النفايات';
+
+  @override
+  String get alertTypeChasseIllegale => 'الصيد غير القانوني';
+
+  @override
+  String get alertTypeActiviteSuspecte => 'نشاط مشبوه';
 
   @override
   String get alertTypeAutre => 'أخرى';

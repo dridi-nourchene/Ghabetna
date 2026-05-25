@@ -94,11 +94,6 @@ class _HomeContent extends ConsumerWidget {
                     fontSize:   26,
                     fontWeight: FontWeight.w700,
                     color:      Color(0xFF1A2E1A))),
-            const SizedBox(height: 6),
-            Text(l10n.homeQuestion,
-                style: const TextStyle(
-                    fontSize: 15,
-                    color:    Color(0xFF8FA896))),
 
             const SizedBox(height: 40),
 

@@ -84,6 +84,9 @@ class _AlertCard extends StatelessWidget {
         AlertType.inondation => l10n.alertTypeInondation,
         AlertType.glissement => l10n.alertTypeGlissement,
         AlertType.maladie    => l10n.alertTypeMaladie,
+        AlertType.depot_dechets => l10n.alertTypeDepotDechets,
+        AlertType.chasse_illegale => l10n.alertTypeChasseIllegale,
+        AlertType.activite_suspecte => l10n.alertTypeActiviteSuspecte,
         AlertType.autre      => l10n.alertTypeAutre,
       };
 

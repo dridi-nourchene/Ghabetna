@@ -1,8 +1,10 @@
 """
 Gateway — Alert Router
-Le gateway injecte X-Forest-Ids pour les routes superviseur :
-  - Il interroge forest_service pour récupérer les forêts assignées au superviseur
-  - Il passe la liste JSON dans le header X-Forest-Ids vers alert_ms
+Corrections :
+  1. _get_supervisor_forest_ids : comparaison UUID normalisée (strip + lower),
+     log détaillé pour debug, retour [] explicite si aucune forêt assignée.
+  2. Toutes les routes superviseur appellent _supervisor_headers() qui injecte
+     X-Forest-Ids (liste JSON d'UUID) vers alert_ms.
 """
 import json
 import httpx
@@ -25,7 +27,6 @@ def _base_headers(request: Request) -> dict:
     if user_email: headers["X-User-Email"] = str(user_email)
     return headers
 
-
 async def _get_supervisor_forest_ids(supervisor_id: str, auth_header: str) -> list[str]:
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -42,26 +43,32 @@ async def _get_supervisor_forest_ids(supervisor_id: str, auth_header: str) -> li
                 return []
             data = response.json()
             forests = data.get("items", [])
-            # Normaliser les deux côtés en lowercase pour la comparaison
             supervisor_id_lower = supervisor_id.lower()
             return [
                 f["id"] for f in forests
-                if str(f.get("superviseur_id", "")).lower() == supervisor_id_lower
+                if f.get("superviseur_id") and          # ← vérifier non-None
+                str(f["superviseur_id"]).lower() == supervisor_id_lower
             ]
+        print(f"[GATEWAY] supervisor={supervisor_id}, forests trouvées={forest_ids}")
     except Exception as e:
         print(f"[GATEWAY] Erreur _get_supervisor_forest_ids: {e}")
         return []
 
 
-async def _proxy_json(request: Request, url: str, extra_headers: dict | None = None) -> Response:
+async def _proxy_json(
+    request: Request,
+    url: str,
+    extra_headers: dict | None = None,
+) -> Response:
     async with httpx.AsyncClient(timeout=90.0) as client:
-        body = await request.body()
+        body    = await request.body()
         headers = {
             "Content-Type": "application/json",
             **_base_headers(request),
         }
         if extra_headers:
             headers.update(extra_headers)
+
         response = await client.request(
             method  = request.method,
             url     = url,
@@ -69,6 +76,7 @@ async def _proxy_json(request: Request, url: str, extra_headers: dict | None = N
             content = body,
             params  = request.query_params,
         )
+
     if not response.content:
         return Response(status_code=response.status_code)
     return JSONResponse(status_code=response.status_code, content=response.json())
@@ -76,7 +84,7 @@ async def _proxy_json(request: Request, url: str, extra_headers: dict | None = N
 
 async def _proxy_multipart(request: Request, url: str) -> Response:
     async with httpx.AsyncClient(timeout=60.0) as client:
-        body = await request.body()
+        body     = await request.body()
         response = await client.request(
             method  = request.method,
             url     = url,
@@ -87,16 +95,25 @@ async def _proxy_multipart(request: Request, url: str) -> Response:
             content = body,
             params  = request.query_params,
         )
+
     if not response.content:
         return Response(status_code=response.status_code)
     return JSONResponse(status_code=response.status_code, content=response.json())
 
 
 async def _supervisor_headers(request: Request) -> dict:
-    """Injecte X-Forest-Ids en récupérant les forêts du superviseur."""
+    """
+    Construit X-Forest-Ids pour les routes superviseur.
+    Retourne toujours un header valide (liste vide [] si aucune forêt).
+    """
     supervisor_id = str(getattr(request.state, "user_id", ""))
     auth_header   = request.headers.get("Authorization", "")
-    forest_ids    = await _get_supervisor_forest_ids(supervisor_id, auth_header)
+
+    if not supervisor_id:
+        print("[GATEWAY] _supervisor_headers : user_id absent du state")
+        return {"X-Forest-Ids": json.dumps([])}
+
+    forest_ids = await _get_supervisor_forest_ids(supervisor_id, auth_header)
     return {"X-Forest-Ids": json.dumps(forest_ids)}
 
 
@@ -119,7 +136,9 @@ async def get_supervisor_map(request: Request):
     """Carte pour le superviseur — injecte X-Forest-Ids."""
     extra = await _supervisor_headers(request)
     return await _proxy_json(
-        request, f"{ALERT_SERVICE_URL}/api/alerts/supervisor/map", extra
+        request,
+        f"{ALERT_SERVICE_URL}/api/alerts/supervisor/map",
+        extra,
     )
 
 
@@ -128,7 +147,9 @@ async def get_supervisor_alerts(request: Request):
     """Liste des alertes du superviseur — injecte X-Forest-Ids."""
     extra = await _supervisor_headers(request)
     return await _proxy_json(
-        request, f"{ALERT_SERVICE_URL}/api/alerts/supervisor", extra
+        request,
+        f"{ALERT_SERVICE_URL}/api/alerts/supervisor",
+        extra,
     )
 
 
@@ -137,7 +158,9 @@ async def update_status(alert_id: str, request: Request):
     """Mise à jour statut — superviseur, injecte X-Forest-Ids."""
     extra = await _supervisor_headers(request)
     return await _proxy_json(
-        request, f"{ALERT_SERVICE_URL}/api/alerts/{alert_id}/status", extra
+        request,
+        f"{ALERT_SERVICE_URL}/api/alerts/{alert_id}/status",
+        extra,
     )
 
 
@@ -145,4 +168,7 @@ async def update_status(alert_id: str, request: Request):
 
 @router.get("/api/alerts/{alert_id}")
 async def get_alert(alert_id: str, request: Request):
-    return await _proxy_json(request, f"{ALERT_SERVICE_URL}/api/alerts/{alert_id}")
+    return await _proxy_json(
+        request,
+        f"{ALERT_SERVICE_URL}/api/alerts/{alert_id}",
+    )

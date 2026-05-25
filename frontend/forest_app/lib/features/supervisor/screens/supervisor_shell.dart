@@ -298,25 +298,7 @@ class _Sidebar extends StatelessWidget {
                 expanded:        expanded,
               ),
 
-              const _SidebarDivider(),
-
-              _SidebarItem(
-                icon:            Icons.park_outlined,
-                label:           'Forêts',
-                route:           '/supervisor/forests',
-                currentLocation: location,
-                expanded:        expanded,
-              ),
-
-              const _SidebarDivider(),
-
-              _SidebarItem(
-                icon:            Icons.settings_outlined,
-                label:           'Paramètres',
-                route:           '/supervisor/settings',
-                currentLocation: location,
-                expanded:        expanded,
-              ),
+             
             ]),
           ),
         ),

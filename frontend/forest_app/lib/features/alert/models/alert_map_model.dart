@@ -1,33 +1,41 @@
-
-
 enum AlertType {
   incendie,
   vol,
   inondation,
   glissement,
   maladie,
+  depot_dechets,
+  chasse_illegale,
+  activite_suspecte,
   autre;
 
   String get label => switch (this) {
-        AlertType.incendie   => 'Incendie',
-        AlertType.vol        => 'Vol',
-        AlertType.inondation => 'Inondation',
-        AlertType.glissement => 'Glissement',
-        AlertType.maladie    => 'Maladie',
-        AlertType.autre      => 'Autre',
-      };
+    AlertType.incendie           => 'Incendie',
+    AlertType.vol                => 'Vol',
+    AlertType.inondation         => 'Inondation',
+    AlertType.glissement         => 'Glissement',
+    AlertType.maladie            => 'Maladie',
+    AlertType.depot_dechets      => 'Dépôt des déchets',
+    AlertType.chasse_illegale    => 'Chasse illégale',
+    AlertType.activite_suspecte  => 'Activité suspecte',
+    AlertType.autre              => 'Autre',
+  };
 
   String get emoji => switch (this) {
-        AlertType.incendie   => '🔥',
-        AlertType.vol        => '🚨',
-        AlertType.inondation => '💧',
-        AlertType.glissement => '⛰️',
-        AlertType.maladie    => '🌿',
-        AlertType.autre      => '⚠️',
-      };
+    AlertType.incendie           => '🔥',
+    AlertType.vol                => '🚨',
+    AlertType.inondation         => '💧',
+    AlertType.glissement         => '⛰️',
+    AlertType.maladie            => '🌿',
+    AlertType.depot_dechets      => '🗑️',
+    AlertType.chasse_illegale    => '🐾',
+    AlertType.activite_suspecte  => '👀',
+    AlertType.autre              => '⚠️',
+  };
 
   static AlertType fromString(String s) =>
-      AlertType.values.firstWhere((e) => e.name == s, orElse: () => AlertType.autre);
+      AlertType.values.firstWhere((e) => e.name == s,
+          orElse: () => AlertType.autre);
 }
 
 enum AlertStatus {
@@ -36,13 +44,14 @@ enum AlertStatus {
   rejeter;
 
   String get label => switch (this) {
-        AlertStatus.en_cours => 'En cours',
-        AlertStatus.traiter  => 'Traitée',
-        AlertStatus.rejeter  => 'Rejetée',
-      };
+    AlertStatus.en_cours => 'En cours',
+    AlertStatus.traiter  => 'Traitée',
+    AlertStatus.rejeter  => 'Rejetée',
+  };
 
   static AlertStatus fromString(String s) =>
-      AlertStatus.values.firstWhere((e) => e.name == s, orElse: () => AlertStatus.en_cours);
+      AlertStatus.values.firstWhere((e) => e.name == s,
+          orElse: () => AlertStatus.en_cours);
 }
 
 enum LocationSource {
@@ -51,7 +60,8 @@ enum LocationSource {
   forest_only;
 
   static LocationSource fromString(String s) =>
-      LocationSource.values.firstWhere((e) => e.name == s, orElse: () => LocationSource.forest_only);
+      LocationSource.values.firstWhere((e) => e.name == s,
+          orElse: () => LocationSource.forest_only);
 }
 
 
@@ -82,15 +92,15 @@ class AlertMapPoint {
       incidentLat != null && incidentLng != null;
 
   factory AlertMapPoint.fromJson(Map<String, dynamic> j) => AlertMapPoint(
-        id:             j['id'] as String,
-        type:           AlertType.fromString(j['type'] as String),
-        status:         AlertStatus.fromString(j['status'] as String),
-        incidentLat:    (j['incident_lat'] as num?)?.toDouble(),
-        incidentLng:    (j['incident_lng'] as num?)?.toDouble(),
-        locationSource: LocationSource.fromString(j['location_source'] as String),
-        forestId:       j['forest_id'] as String,
-        createdAt:      DateTime.parse(j['created_at'] as String),
-      );
+    id:             j['id'] as String,
+    type:           AlertType.fromString(j['type'] as String),
+    status:         AlertStatus.fromString(j['status'] as String),
+    incidentLat:    (j['incident_lat'] as num?)?.toDouble(),
+    incidentLng:    (j['incident_lng'] as num?)?.toDouble(),
+    locationSource: LocationSource.fromString(j['location_source'] as String),
+    forestId:       j['forest_id'] as String,
+    createdAt:      DateTime.parse(j['created_at'] as String),
+  );
 }
 
 
@@ -137,7 +147,6 @@ class AlertDetail {
 
   double? get distanceKm {
     if (incidentLat == null || agentLat == null) return null;
-    // Haversine simplifié
     const r = 6371.0;
     final dLat = (incidentLat! - agentLat!) * 3.14159265 / 180;
     final dLng = (incidentLng! - agentLng!) * 3.14159265 / 180;
@@ -147,26 +156,26 @@ class AlertDetail {
   }
 
   factory AlertDetail.fromJson(Map<String, dynamic> j) => AlertDetail(
-        id:                j['id'] as String,
-        type:              AlertType.fromString(j['type'] as String),
-        status:            AlertStatus.fromString(j['status'] as String),
-        description:       j['description'] as String?,
-        incidentLat:       (j['incident_lat'] as num?)?.toDouble(),
-        incidentLng:       (j['incident_lng'] as num?)?.toDouble(),
-        agentLat:          (j['agent_lat'] as num?)?.toDouble(),
-        agentLng:          (j['agent_lng'] as num?)?.toDouble(),
-        locationSource:    LocationSource.fromString(j['location_source'] as String),
-        imageUrl:          j['image_url'] as String?,
-        agentId:           j['agent_id'] as String,
-        forestId:          j['forest_id'] as String,
-        supervisorComment: j['supervisor_comment'] as String?,
-        supervisorId:      j['supervisor_id'] as String?,
-        commentedAt:       j['commented_at'] != null
-            ? DateTime.tryParse(j['commented_at'] as String)
-            : null,
-        createdAt:         DateTime.parse(j['created_at'] as String),
-        updatedAt:         j['updated_at'] != null
-            ? DateTime.tryParse(j['updated_at'] as String)
-            : null,
-      );
+    id:                j['id'] as String,
+    type:              AlertType.fromString(j['type'] as String),
+    status:            AlertStatus.fromString(j['status'] as String),
+    description:       j['description'] as String?,
+    incidentLat:       (j['incident_lat'] as num?)?.toDouble(),
+    incidentLng:       (j['incident_lng'] as num?)?.toDouble(),
+    agentLat:          (j['agent_lat'] as num?)?.toDouble(),
+    agentLng:          (j['agent_lng'] as num?)?.toDouble(),
+    locationSource:    LocationSource.fromString(j['location_source'] as String),
+    imageUrl:          j['image_url'] as String?,
+    agentId:           j['agent_id'] as String,
+    forestId:          j['forest_id'] as String,
+    supervisorComment: j['supervisor_comment'] as String?,
+    supervisorId:      j['supervisor_id'] as String?,
+    commentedAt:       j['commented_at'] != null
+        ? DateTime.tryParse(j['commented_at'] as String)
+        : null,
+    createdAt:         DateTime.parse(j['created_at'] as String),
+    updatedAt:         j['updated_at'] != null
+        ? DateTime.tryParse(j['updated_at'] as String)
+        : null,
+  );
 }

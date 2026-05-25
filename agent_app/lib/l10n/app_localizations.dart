@@ -179,14 +179,8 @@ abstract class AppLocalizations {
   /// No description provided for @homeGreeting.
   ///
   /// In fr, this message translates to:
-  /// **'Bonjour 👋'**
+  /// **'Bonjour'**
   String get homeGreeting;
-
-  /// No description provided for @homeQuestion.
-  ///
-  /// In fr, this message translates to:
-  /// **'Que voulez-vous faire ?'**
-  String get homeQuestion;
 
   /// No description provided for @homeCreateAlert.
   ///
@@ -433,6 +427,24 @@ abstract class AppLocalizations {
   /// In fr, this message translates to:
   /// **'Maladie forestière'**
   String get alertTypeMaladie;
+
+  /// No description provided for @alertTypeDepotDechets.
+  ///
+  /// In fr, this message translates to:
+  /// **'Dépôt des déchets'**
+  String get alertTypeDepotDechets;
+
+  /// No description provided for @alertTypeChasseIllegale.
+  ///
+  /// In fr, this message translates to:
+  /// **'Chasse illégale'**
+  String get alertTypeChasseIllegale;
+
+  /// No description provided for @alertTypeActiviteSuspecte.
+  ///
+  /// In fr, this message translates to:
+  /// **'Activité suspecte'**
+  String get alertTypeActiviteSuspecte;
 
   /// No description provided for @alertTypeAutre.
   ///

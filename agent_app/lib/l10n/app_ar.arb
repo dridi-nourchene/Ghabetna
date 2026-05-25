@@ -16,8 +16,7 @@
   "loginPasswordMin": "6 أحرف على الأقل",
   "loginFooter": "المديرية العامة للغابات",
 
-  "homeGreeting": "مرحباً 👋",
-  "homeQuestion": "ماذا تريد أن تفعل؟",
+  "homeGreeting": "مرحباً ",
   "homeCreateAlert": "الإبلاغ عن تنبيه",
   "homeCreateAlertSub": "الإبلاغ عن حريق أو سرقة أو حادثة أخرى",
   "homeMyAlerts": "تنبيهاتي",
@@ -63,7 +62,11 @@
   "alertTypeInondation": "فيضان",
   "alertTypeGlissement": "انزلاق تربة",
   "alertTypeMaladie": "مرض غابوي",
+  "alertTypeDepotDechets" : "إلقاء النفايات",
+  "alertTypeChasseIllegale": "الصيد غير القانوني",
+  "alertTypeActiviteSuspecte": "نشاط مشبوه",
   "alertTypeAutre": "أخرى",
+  
 
   "alertStatusEnCours": "قيد المعالجة",
   "alertStatusTraiter": "تمت المعالجة",

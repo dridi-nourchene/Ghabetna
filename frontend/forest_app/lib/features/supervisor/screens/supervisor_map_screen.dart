@@ -25,6 +25,7 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return; // ← GUARD
       ref.read(alertMapProvider.notifier).startPolling();
       ref.read(forestListProvider.notifier).loadForests();
     });
@@ -37,6 +38,7 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
   }
 
   void _loadParcellesIfNeeded(List<Forest> forests) {
+    if (!mounted) return; // ← GUARD
     final ps = ref.read(parcelleProvider);
     for (final f in forests) {
       if (!ps.byForest.containsKey(f.id) && !ps.loadingIds.contains(f.id)) {
@@ -66,11 +68,12 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
     final forests     = forestState.forests;
 
     if (forests.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback(
-          (_) => _loadParcellesIfNeeded(forests));
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return; // ← GUARD
+        _loadParcellesIfNeeded(forests);
+      });
     }
 
-    // ── Polygones forêts (sans labels) ──────────────────────────
     final forestPolygons = forests.map((f) {
       final pts = f.geojson.latLngList
           .map((p) => LatLng(p[0], p[1]))
@@ -85,7 +88,6 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
       );
     }).whereType<Polygon>().toList();
 
-    // ── Polygones parcelles (sans labels) ───────────────────────
     final parcellePolygons = <Polygon>[];
     for (final fId in ps.byForest.keys) {
       for (final p in ps.forForest(fId)) {
@@ -103,7 +105,6 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
       }
     }
 
-    // ── Marqueurs alertes ────────────────────────────────────────
     final alertMarkers = <Marker>[];
     for (final point in alertState.points) {
       final position = _resolvePosition(point, forests);
@@ -125,8 +126,6 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
     }
 
     return Stack(children: [
-
-      // ── Carte ─────────────────────────────────────────────────
       FlutterMap(
         mapController: _mapController,
         options: const MapOptions(
@@ -154,7 +153,6 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
         ],
       ),
 
-      // ── Indicateur polling ─────────────────────────────────────
       Positioned(
         top: 16, right: 16,
         child: _PollingIndicator(
@@ -165,7 +163,6 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
         ),
       ),
 
-      // ── Légende ───────────────────────────────────────────────
       const Positioned(
         bottom: 24, left: 16,
         child: _Legend(),
@@ -202,14 +199,7 @@ class _AlertTriangle extends StatelessWidget {
       CustomPaint(
         size:    const Size(size, size),
         painter: _TrianglePainter(color: _color),
-        child: const SizedBox(
-          width:  size,
-          height: size,
-          child: Align(
-            alignment: Alignment(0, -0.1),
-            child: SizedBox(width: size, height: size),
-          ),
-        ),
+        child: const SizedBox(width: size, height: size),
       ),
       Positioned(
         top: size * 0.15,
@@ -379,7 +369,6 @@ class _Legend extends StatelessWidget {
                     fontSize:   11,
                     fontWeight: FontWeight.w600,
                     color:      AppColors.textSecondary)),
-
             const SizedBox(height: 4),
             _LegendTriangle(
                 color: const Color(0xFFD32F2F), label: 'Alerte en cours'),

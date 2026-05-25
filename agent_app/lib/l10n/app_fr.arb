@@ -16,8 +16,8 @@
   "loginPasswordMin": "Minimum 6 caractères",
   "loginFooter": "DGF — Direction Générale des Forêts",
 
-  "homeGreeting": "Bonjour 👋",
-  "homeQuestion": "Que voulez-vous faire ?",
+  "homeGreeting": "Bonjour",
+
   "homeCreateAlert": "Déclarer une alerte",
   "homeCreateAlertSub": "Signaler un incendie, vol ou autre incident",
   "homeMyAlerts": "Mes alertes",
@@ -63,6 +63,9 @@
   "alertTypeInondation": "Inondation",
   "alertTypeGlissement": "Glissement de terrain",
   "alertTypeMaladie": "Maladie forestière",
+  "alertTypeDepotDechets" : "Dépôt des déchets",
+  "alertTypeChasseIllegale": "Chasse illégale",
+  "alertTypeActiviteSuspecte": "Activité suspecte",
   "alertTypeAutre": "Autre",
 
   "alertStatusEnCours": "En cours",

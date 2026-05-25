@@ -24,6 +24,7 @@ class _SupervisorAlertDetailScreenState
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return; // ← GUARD
       ref.read(alertDetailProvider.notifier).loadAlert(widget.alertId);
     });
   }
@@ -35,13 +36,14 @@ class _SupervisorAlertDetailScreenState
   }
 
   Future<void> _handleUpdateStatus(String status) async {
+    if (!mounted) return; // ← GUARD
     final comment = _commentController.text.trim();
     final ok = await ref.read(alertDetailProvider.notifier).updateStatus(
           alertId: widget.alertId,
           status:  status,
           comment: comment.isNotEmpty ? comment : null,
         );
-    if (ok && mounted) {
+    if (ok && mounted) { // ← GUARD après await
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(status == 'traiter'
@@ -53,7 +55,7 @@ class _SupervisorAlertDetailScreenState
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
       );
-      // Refresh historique si on revient en arrière
+      // Refresh des listes parentes
       ref.read(historiqueProvider.notifier).load();
       ref.read(alertMapProvider.notifier).refreshNow();
     }
@@ -92,9 +94,12 @@ class _SupervisorAlertDetailScreenState
           : state.error != null
               ? _ErrorView(
                   message: state.error!,
-                  onRetry: () => ref
-                      .read(alertDetailProvider.notifier)
-                      .loadAlert(widget.alertId),
+                  onRetry: () {
+                    if (!mounted) return; // ← GUARD
+                    ref
+                        .read(alertDetailProvider.notifier)
+                        .loadAlert(widget.alertId);
+                  },
                 )
               : state.alert == null
                   ? const SizedBox.shrink()
@@ -103,8 +108,10 @@ class _SupervisorAlertDetailScreenState
                       isUpdating:        state.isUpdating,
                       commentController: _commentController,
                       commentExpanded:   _commentExpanded,
-                      onToggleComment:   () => setState(
-                          () => _commentExpanded = !_commentExpanded),
+                      onToggleComment:   () {
+                        if (!mounted) return; // ← GUARD
+                        setState(() => _commentExpanded = !_commentExpanded);
+                      },
                       onUpdateStatus:    _handleUpdateStatus,
                     ),
     );
@@ -150,7 +157,7 @@ class _AlertContent extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
 
-          // ── Header card ─────────────────────────────────
+          // ── Header ──────────────────────────────────────
           _SectionCard(
             child: Row(children: [
               Container(
@@ -358,8 +365,9 @@ class _AlertContent extends StatelessWidget {
                         Expanded(
                           child: Text(alert.supervisorComment!,
                               style: const TextStyle(
-                                  fontSize: 13, color: AppColors.info,
-                                  height: 1.4)),
+                                  fontSize: 13,
+                                  color:    AppColors.info,
+                                  height:   1.4)),
                         ),
                       ],
                     ),
@@ -379,7 +387,6 @@ class _AlertContent extends StatelessWidget {
                   const _Label('Actions'),
                   const SizedBox(height: 12),
 
-                  // ── Toggle commentaire ────────────────────
                   GestureDetector(
                     onTap: onToggleComment,
                     child: Container(
@@ -416,7 +423,6 @@ class _AlertContent extends StatelessWidget {
                     ),
                   ),
 
-                  // ── Champ commentaire ─────────────────────
                   if (commentExpanded) ...[
                     const SizedBox(height: 10),
                     TextField(
@@ -452,7 +458,6 @@ class _AlertContent extends StatelessWidget {
 
                   const SizedBox(height: 14),
 
-                  // ── Boutons Traiter / Rejeter ─────────────
                   Row(children: [
                     Expanded(
                       child: _ActionButton(
@@ -482,7 +487,7 @@ class _AlertContent extends StatelessWidget {
             const SizedBox(height: 12),
           ],
 
-          // ── Statut final si déjà traité ───────────────────
+          // ── Statut final ──────────────────────────────────
           if (alert.status != AlertStatus.en_cours) ...[
             _SectionCard(
               child: Row(children: [
@@ -559,7 +564,7 @@ class _AlertContent extends StatelessWidget {
       '${dt.minute.toString().padLeft(2, '0')}';
 }
 
-// ── Section card ──────────────────────────────────────────────
+// ── Widgets réutilisables ─────────────────────────────────────
 
 class _SectionCard extends StatelessWidget {
   final Widget child;

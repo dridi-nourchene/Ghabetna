@@ -41,9 +41,9 @@ class MainScaffold extends ConsumerWidget {
         title: Row(children: [
           Image.asset(
             'assets/images/logo.png',
-            width: 32, height: 32,
+            width: 52, height: 52,
             errorBuilder: (_, __, ___) => Container(
-              width: 32, height: 32,
+              width: 52, height: 52,
               decoration: BoxDecoration(
                 color:        AgentColors.primary,
                 borderRadius: BorderRadius.circular(8),

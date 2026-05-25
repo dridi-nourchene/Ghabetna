@@ -57,6 +57,8 @@ class SupervisorMapNotifier extends StateNotifier<SupervisorMapState> {
   SupervisorMapNotifier(this._repo) : super(const SupervisorMapState());
 
   void startPolling() {
+    // ← Annuler l'éventuel timer précédent avant d'en créer un nouveau
+    _timer?.cancel();
     _fetch();
     _timer = Timer.periodic(const Duration(seconds: 30), (_) => _fetch());
   }
@@ -69,15 +71,25 @@ class SupervisorMapNotifier extends StateNotifier<SupervisorMapState> {
   Future<void> refreshNow() => _fetch();
 
   Future<void> _fetch() async {
+    // ← Guard : si le notifier est déjà dispose, on ne fait rien
+    if (!mounted) return;
+
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       final points = await _repo.getSupervisorMapPoints();
+
+      // ← Guard après l'await : la navigation peut avoir eu lieu pendant l'appel réseau
+      if (!mounted) return;
+
       state = state.copyWith(
         points:      points,
         isLoading:   false,
         lastRefresh: DateTime.now(),
       );
     } catch (e) {
+      // ← Guard après l'await dans le catch aussi
+      if (!mounted) return;
+
       state = state.copyWith(isLoading: false, error: e.toString());
     }
   }
@@ -85,6 +97,7 @@ class SupervisorMapNotifier extends StateNotifier<SupervisorMapState> {
   @override
   void dispose() {
     _timer?.cancel();
+    _timer = null;
     super.dispose();
   }
 }
@@ -135,17 +148,28 @@ class HistoriqueNotifier extends StateNotifier<HistoriqueState> {
   HistoriqueNotifier(this._repo) : super(const HistoriqueState());
 
   Future<void> load({String? status}) async {
+    if (!mounted) return; // ← Guard
+
     state = state.copyWith(isLoading: true, clearError: true, filterStatus: status);
     try {
       final alerts = await _repo.getSupervisorAlerts(status: status);
+
+      if (!mounted) return; // ← Guard après await
+
       state = state.copyWith(alerts: alerts, isLoading: false);
     } catch (e) {
+      if (!mounted) return; // ← Guard après await dans catch
+
       state = state.copyWith(isLoading: false, error: e.toString());
     }
   }
 
   void setFilter(String? status) => load(status: status);
-  void clearError() => state = state.copyWith(clearError: true);
+
+  void clearError() {
+    if (!mounted) return;
+    state = state.copyWith(clearError: true);
+  }
 }
 
 final historiqueProvider =
@@ -193,11 +217,18 @@ class AlertDetailNotifier extends StateNotifier<AlertDetailState> {
   AlertDetailNotifier(this._repo) : super(const AlertDetailState());
 
   Future<void> loadAlert(String alertId) async {
+    if (!mounted) return; // ← Guard
+
     state = const AlertDetailState(isLoading: true);
     try {
       final alert = await _repo.getAlertById(alertId);
+
+      if (!mounted) return; // ← Guard après await
+
       state = AlertDetailState(alert: alert);
     } catch (e) {
+      if (!mounted) return; // ← Guard après await dans catch
+
       state = AlertDetailState(error: e.toString());
     }
   }
@@ -207,6 +238,8 @@ class AlertDetailNotifier extends StateNotifier<AlertDetailState> {
     required String status,
     String?         comment,
   }) async {
+    if (!mounted) return false; // ← Guard
+
     state = state.copyWith(isUpdating: true);
     try {
       final updated = await _repo.updateStatus(
@@ -214,16 +247,28 @@ class AlertDetailNotifier extends StateNotifier<AlertDetailState> {
         status:            status,
         supervisorComment: comment,
       );
+
+      if (!mounted) return false; // ← Guard après await
+
       state = state.copyWith(alert: updated, isUpdating: false);
       return true;
     } catch (e) {
+      if (!mounted) return false; // ← Guard après await dans catch
+
       state = state.copyWith(isUpdating: false, error: e.toString());
       return false;
     }
   }
 
-  void clear() => state = const AlertDetailState();
-  void clearError() => state = state.copyWith(clearError: true);
+  void clear() {
+    if (!mounted) return;
+    state = const AlertDetailState();
+  }
+
+  void clearError() {
+    if (!mounted) return;
+    state = state.copyWith(clearError: true);
+  }
 }
 
 final alertDetailProvider =

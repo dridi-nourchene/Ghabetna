@@ -48,10 +48,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get loginFooter => 'DGF — Direction Générale des Forêts';
 
   @override
-  String get homeGreeting => 'Bonjour 👋';
-
-  @override
-  String get homeQuestion => 'Que voulez-vous faire ?';
+  String get homeGreeting => 'Bonjour';
 
   @override
   String get homeCreateAlert => 'Déclarer une alerte';
@@ -176,6 +173,15 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get alertTypeMaladie => 'Maladie forestière';
+
+  @override
+  String get alertTypeDepotDechets => 'Dépôt des déchets';
+
+  @override
+  String get alertTypeChasseIllegale => 'Chasse illégale';
+
+  @override
+  String get alertTypeActiviteSuspecte => 'Activité suspecte';
 
   @override
   String get alertTypeAutre => 'Autre';

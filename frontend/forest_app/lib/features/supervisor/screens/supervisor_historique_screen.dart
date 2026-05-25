@@ -7,7 +7,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../features/alert/models/alert_map_model.dart';
 import '../../../features/alert/providers/alert_map_provider.dart';
 
-// Alias pour l'écran historique dans le router
+// Alias pour le router
 class SupervisorAlertHistoryScreen extends SupervisorHistoriqueScreen {
   const SupervisorAlertHistoryScreen({super.key});
 }
@@ -28,6 +28,7 @@ class _State extends ConsumerState<SupervisorHistoriqueScreen>
     super.initState();
     _tabs = TabController(length: 3, vsync: this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return; // ← GUARD
       ref.read(historiqueProvider.notifier).load();
     });
   }
@@ -39,6 +40,7 @@ class _State extends ConsumerState<SupervisorHistoriqueScreen>
   }
 
   void _onTabChanged(int idx) {
+    if (!mounted) return; // ← GUARD
     final status = switch (idx) {
       1 => 'en_cours',
       2 => 'traiter',
@@ -68,6 +70,7 @@ class _State extends ConsumerState<SupervisorHistoriqueScreen>
             icon: const Icon(Icons.refresh,
                 color: AppColors.textMuted, size: 20),
             onPressed: () {
+              if (!mounted) return; // ← GUARD
               final status = switch (_tabs.index) {
                 1 => 'en_cours',
                 2 => 'traiter',
@@ -92,10 +95,10 @@ class _State extends ConsumerState<SupervisorHistoriqueScreen>
                   fontSize: 12, fontWeight: FontWeight.w600),
               unselectedLabelStyle: const TextStyle(
                   fontSize: 12, fontWeight: FontWeight.w400),
-              labelColor:         AppColors.primaryDark,
+              labelColor:           AppColors.primaryDark,
               unselectedLabelColor: AppColors.textMuted,
-              indicatorColor:     AppColors.primaryDark,
-              indicatorWeight:    2.5,
+              indicatorColor:       AppColors.primaryDark,
+              indicatorWeight:      2.5,
               tabs: [
                 Tab(
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -139,8 +142,10 @@ class _State extends ConsumerState<SupervisorHistoriqueScreen>
           : state.error != null
               ? _ErrorState(
                   message: state.error!,
-                  onRetry: () =>
-                      ref.read(historiqueProvider.notifier).load(),
+                  onRetry: () {
+                    if (!mounted) return; // ← GUARD
+                    ref.read(historiqueProvider.notifier).load();
+                  },
                 )
               : state.alerts.isEmpty
                   ? const _EmptyState()
@@ -199,7 +204,6 @@ class _AlertCard extends StatelessWidget {
             ],
           ),
           child: Row(children: [
-            // Emoji
             Container(
               width: 46, height: 46,
               decoration: BoxDecoration(
@@ -212,7 +216,6 @@ class _AlertCard extends StatelessWidget {
             ),
             const SizedBox(width: 14),
 
-            // Infos
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -353,7 +356,7 @@ class _CountBadge extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════════════
-//  STATES
+//  ÉTATS VIDE / ERREUR
 // ══════════════════════════════════════════════════════════════
 
 class _EmptyState extends StatelessWidget {
