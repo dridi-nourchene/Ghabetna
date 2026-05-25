@@ -1,11 +1,11 @@
-// lib/features/alert/providers/supervisor_alert_provider.dart
+// frontend/forest_app/lib/features/alert/providers/alert_map_provider.dart
 
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../models/alert_model.dart';
+import '../models/alert_map_model.dart';
 import '../repositories/alert_repository.dart';
 import '../../auth/providers/auth_provider.dart';
-import '../../../core/config/api_config.dart';
+import '../../../core/constants.dart';
 
 // ── Repository provider ───────────────────────────────────────
 
@@ -89,7 +89,7 @@ class SupervisorMapNotifier extends StateNotifier<SupervisorMapState> {
   }
 }
 
-final supervisorMapProvider =
+final alertMapProvider =
     StateNotifierProvider<SupervisorMapNotifier, SupervisorMapState>((ref) {
   final repo = ref.watch(alertRepositoryProvider);
   return SupervisorMapNotifier(repo);
@@ -104,7 +104,7 @@ class HistoriqueState {
   final List<AlertDetail> alerts;
   final bool              isLoading;
   final String?           error;
-  final String?           filterStatus; // null = toutes
+  final String?           filterStatus;
 
   const HistoriqueState({
     this.alerts       = const [],
@@ -118,7 +118,7 @@ class HistoriqueState {
     bool?              isLoading,
     String?            error,
     String?            filterStatus,
-    bool               clearError = false,
+    bool               clearError  = false,
     bool               clearFilter = false,
   }) =>
       HistoriqueState(
@@ -145,7 +145,6 @@ class HistoriqueNotifier extends StateNotifier<HistoriqueState> {
   }
 
   void setFilter(String? status) => load(status: status);
-
   void clearError() => state = state.copyWith(clearError: true);
 }
 
@@ -193,7 +192,7 @@ class AlertDetailNotifier extends StateNotifier<AlertDetailState> {
 
   AlertDetailNotifier(this._repo) : super(const AlertDetailState());
 
-  Future<void> load(String alertId) async {
+  Future<void> loadAlert(String alertId) async {
     state = const AlertDetailState(isLoading: true);
     try {
       final alert = await _repo.getAlertById(alertId);

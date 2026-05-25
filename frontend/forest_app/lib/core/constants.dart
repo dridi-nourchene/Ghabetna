@@ -15,3 +15,8 @@ class ApiConstants {
 
   static const Duration requestTimeout = Duration(seconds: 20);
 }
+
+// Alias utilisé par AlertRepository et les providers superviseur
+class ApiConfig {
+  static const String baseUrl = ApiConstants.baseUrl;
+}

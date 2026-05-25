@@ -10,11 +10,13 @@ class AuthState {
   final AuthStatus status;
   final String? error;
   final String? role;
+  final String? accessToken; // ← ajouté pour AlertRepository
 
   const AuthState({
     this.status = AuthStatus.initial,
     this.error,
     this.role,
+    this.accessToken,
   });
 
   AuthState copyWith({
@@ -23,15 +25,18 @@ class AuthState {
     bool clearError = false,
     String? role,
     bool clearRole = false,
+    String? accessToken,
+    bool clearToken = false,
   }) {
     return AuthState(
-      status: status ?? this.status,
-      error: clearError ? null : (error ?? this.error),
-      role: clearRole ? null : (role ?? this.role),
+      status:      status      ?? this.status,
+      error:       clearError  ? null : (error ?? this.error),
+      role:        clearRole   ? null : (role  ?? this.role),
+      accessToken: clearToken  ? null : (accessToken ?? this.accessToken),
     );
   }
 
-  bool get isLoading => status == AuthStatus.loading;
+  bool get isLoading       => status == AuthStatus.loading;
   bool get isAuthenticated => status == AuthStatus.authenticated;
 }
 
@@ -45,116 +50,96 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> _checkExistingSession() async {
-  final accessToken = await _authService.getAccessToken();
-  final role        = await _authService.getRole();
+    final accessToken = await _authService.getAccessToken();
+    final role        = await _authService.getRole();
 
-  if (accessToken == null || role == null) {
-    state = state.copyWith(status: AuthStatus.unauthenticated);
-    return;
-  }
-
-  // Vérifier que le token n'est pas expiré
-  if (_isTokenExpired(accessToken)) {
-    // Tenter un refresh
-    try {
-      await _authService.refreshAccessToken();
-      state = state.copyWith(
-        status: AuthStatus.authenticated,
-        role:   role,
-      );
-    } catch (_) {
-      // Refresh échoué → logout
-      await _authService.logout();
+    if (accessToken == null || role == null) {
       state = state.copyWith(status: AuthStatus.unauthenticated);
+      return;
     }
-    return;
+
+    if (_isTokenExpired(accessToken)) {
+      try {
+        await _authService.refreshAccessToken();
+        final newToken = await _authService.getAccessToken();
+        state = state.copyWith(
+          status:      AuthStatus.authenticated,
+          role:        role,
+          accessToken: newToken,
+        );
+      } catch (_) {
+        await _authService.logout();
+        state = state.copyWith(status: AuthStatus.unauthenticated);
+      }
+      return;
+    }
+
+    state = state.copyWith(
+      status:      AuthStatus.authenticated,
+      role:        role,
+      accessToken: accessToken,
+    );
   }
 
-  state = state.copyWith(
-    status: AuthStatus.authenticated,
-    role:   role,
-  );
-}
-
-// Decode JWT et vérifier expiration
-bool _isTokenExpired(String token) {
-  try {
-    final parts = token.split('.');
-    if (parts.length != 3) return true;
-    final payload  = parts[1];
-    final normalized = base64Url.normalize(payload);
-    final decoded  = utf8.decode(base64Url.decode(normalized));
-    final data     = jsonDecode(decoded);
-    final exp      = data['exp'] as int?;
-    if (exp == null) return true;
-    return DateTime.now().millisecondsSinceEpoch / 1000 > exp;
-  } catch (_) {
-    return true;
+  bool _isTokenExpired(String token) {
+    try {
+      final parts      = token.split('.');
+      if (parts.length != 3) return true;
+      final payload    = parts[1];
+      final normalized = base64Url.normalize(payload);
+      final decoded    = utf8.decode(base64Url.decode(normalized));
+      final data       = jsonDecode(decoded);
+      final exp        = data['exp'] as int?;
+      if (exp == null) return true;
+      return DateTime.now().millisecondsSinceEpoch / 1000 > exp;
+    } catch (_) {
+      return true;
+    }
   }
-}
 
   Future<void> login(String email, String password) async {
-    print('🔐 AuthNotifier.login - START');
-    
-    // Reset l'état
     state = state.copyWith(
-      status: AuthStatus.loading,
+      status:     AuthStatus.loading,
       clearError: true,
-      clearRole: true,
+      clearRole:  true,
+      clearToken: true,
     );
-    print('📊 State set to loading');
 
     try {
       await _authService.login(email, password);
-      final role = await _authService.getRole();
-      
-      print('✅ Login successful, role: $role');
+      final role  = await _authService.getRole();
+      final token = await _authService.getAccessToken();
+
       state = state.copyWith(
-        status: AuthStatus.authenticated,
-        role: role,
-        clearError: true,
+        status:      AuthStatus.authenticated,
+        role:        role,
+        accessToken: token,
+        clearError:  true,
       );
-      
     } catch (e) {
-      // 🔑 GARDER LE MESSAGE ORIGINAL
       String errorMessage = e.toString();
-      print('❌ Original error caught: $errorMessage');
-      
-      // Enlever 'Exception: ' si présent
       if (errorMessage.startsWith('Exception: ')) {
+        errorMessage = errorMessage.substring(11);
+      } else if (errorMessage.startsWith('Exception:')) {
         errorMessage = errorMessage.substring(10);
       }
-      
-      // Enlever 'Exception:' (sans espace)
-      if (errorMessage.startsWith('Exception:')) {
-        errorMessage = errorMessage.substring(9);
-      }
-      
       errorMessage = errorMessage.trim();
-      
-      // IMPORTANT: Ne pas remplacer le message!
-      // Si le message est vide, mettre un message par défaut
-      if (errorMessage.isEmpty) {
-        errorMessage = 'Erreur de connexion';
-      }
-      
-      print('📝 Final error message: "$errorMessage"');
-      
+      if (errorMessage.isEmpty) errorMessage = 'Erreur de connexion';
+
       state = state.copyWith(
         status: AuthStatus.error,
-        error: errorMessage,  // ← GARDER LE VRAI MESSAGE
+        error:  errorMessage,
       );
     }
-    
-    print('🔐 AuthNotifier.login - END');
   }
 
   Future<void> logout() async {
     await _authService.logout();
     state = state.copyWith(
-      status: AuthStatus.unauthenticated,
-      clearRole: true,
+      status:     AuthStatus.unauthenticated,
+      clearRole:  true,
       clearError: true,
+      clearToken: true,
     );
   }
 }
