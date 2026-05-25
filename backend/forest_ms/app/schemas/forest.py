@@ -60,6 +60,7 @@ class ForestResponse(BaseModel):
     area_hectares:   Optional[float]
     centroid_lat:    Optional[float]
     centroid_lng:    Optional[float]
+    superviseur_id:  Optional[UUID]   # ← AJOUTER
     created_by:      UUID
     created_at:      datetime
     updated_at:      Optional[datetime]

@@ -10,8 +10,8 @@ class ApiConstants {
   static const String usersUrl   = '$baseUrl/api/users';
 
   // Forêts
-  static const String forestsUrl        = '$baseUrl/api/v1/forests';
-  static const String forestsGeoJsonUrl = '$baseUrl/api/v1/forests/geojson';
+  static const String forestsUrl = '$baseUrl/api/forests/';
+  static const String forestsGeoJsonUrl = '$baseUrl/api/forests/geojson';
 
   static const Duration requestTimeout = Duration(seconds: 20);
 }

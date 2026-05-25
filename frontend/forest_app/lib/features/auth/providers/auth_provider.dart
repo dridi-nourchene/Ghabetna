@@ -10,7 +10,7 @@ class AuthState {
   final AuthStatus status;
   final String? error;
   final String? role;
-  final String? accessToken; // ← ajouté pour AlertRepository
+  final String? accessToken; 
 
   const AuthState({
     this.status = AuthStatus.initial,

@@ -27,10 +27,6 @@ def _base_headers(request: Request) -> dict:
 
 
 async def _get_supervisor_forest_ids(supervisor_id: str, auth_header: str) -> list[str]:
-    """
-    Interroge forest_service pour récupérer les forêts assignées au superviseur.
-    Retourne une liste d'UUID strings.
-    """
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(
@@ -46,12 +42,14 @@ async def _get_supervisor_forest_ids(supervisor_id: str, auth_header: str) -> li
                 return []
             data = response.json()
             forests = data.get("items", [])
-            # Filtrer les forêts assignées à ce superviseur
+            # Normaliser les deux côtés en lowercase pour la comparaison
+            supervisor_id_lower = supervisor_id.lower()
             return [
                 f["id"] for f in forests
-                if f.get("superviseur_id") == supervisor_id
+                if str(f.get("superviseur_id", "")).lower() == supervisor_id_lower
             ]
-    except Exception:
+    except Exception as e:
+        print(f"[GATEWAY] Erreur _get_supervisor_forest_ids: {e}")
         return []
 
 

@@ -29,18 +29,18 @@ def _wkb_to_geojson(wkb) -> dict:
     """WKBElement PostGIS → GeoJSON dict"""
     return mapping(to_shape(wkb))
 
-
 def _to_response(forest: Forest) -> dict:
     return {
-        "id":            str(forest.id),
-        "name":          forest.name,
-        "geojson":       _wkb_to_geojson(forest.geom),
-        "area_hectares": forest.area_hectares,
-        "centroid_lat":  forest.centroid_lat,
-        "centroid_lng":  forest.centroid_lng,
-        "created_by":    str(forest.created_by),
-        "created_at":    forest.created_at,
-        "updated_at":    forest.updated_at,
+        "id":             str(forest.id),
+        "name":           forest.name,
+        "geojson":        _wkb_to_geojson(forest.geom),
+        "area_hectares":  forest.area_hectares,
+        "centroid_lat":   forest.centroid_lat,
+        "centroid_lng":   forest.centroid_lng,
+        "superviseur_id": str(forest.superviseur_id) if forest.superviseur_id else None,  # ← AJOUTER
+        "created_by":     str(forest.created_by),
+        "created_at":     forest.created_at,
+        "updated_at":     forest.updated_at,
     }
 
 
