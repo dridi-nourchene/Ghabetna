@@ -8,10 +8,12 @@ alembic
 pydantic 
 pydantic-settings 
 sqlalchemy[asyncio]
-alembic==1.13.1
+alembic
 sqlalchemy[asyncio]
 pydantic[email]
 python-dotenv
 passlib[bcrypt]
 python-jose[cryptography]
 redis
+psycopg2-binary
+fastapi-mail

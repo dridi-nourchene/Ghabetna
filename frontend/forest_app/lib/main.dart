@@ -1,14 +1,14 @@
 // lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_web_plugins/flutter_web_plugins.dart'; // ✅ AJOUT
+import 'package:flutter_web_plugins/flutter_web_plugins.dart'; 
 
 import 'core/router/app_routes.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  /// ✅ IMPORTANT pour les liens email
+  ///  IMPORTANT pour les liens email
   setUrlStrategy(PathUrlStrategy());
 
   runApp(

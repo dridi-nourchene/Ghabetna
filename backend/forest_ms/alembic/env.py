@@ -34,7 +34,7 @@ def get_url() -> str:
     """
     url = os.getenv(
         "DATABASE_URL_SYNC",
-        "postgresql+psycopg2://postgres:master@localhost:5432/forest_db",
+        "postgresql+psycopg2://forest_user:forest_pass@forest_db:5432/forest_db",
     )
     # Sécurité : si quelqu'un passe l'URL asyncpg, on corrige
     return url.replace("postgresql+asyncpg://", "postgresql+psycopg2://")

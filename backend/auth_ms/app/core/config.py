@@ -15,10 +15,10 @@ class Settings(BaseSettings):
 
     # App
     ALLOWED_ORIGINS: List[str] = ["*"]
-    FRONTEND_URL: str = "http://localhost:3000"
+    FRONTEND_URL: str = "http://localhost:8080"
 
     # Redis
-    REDIS_HOST: str = "localhost"
+    REDIS_HOST: str = "redis"
     REDIS_PORT: int = 6379
 
     # Mail

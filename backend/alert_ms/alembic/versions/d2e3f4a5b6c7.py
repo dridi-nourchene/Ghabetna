@@ -3,7 +3,7 @@ import sqlalchemy as sa
 from geoalchemy2 import Geometry
 
 revision = "d2e3f4a5b6c7"
-down_revision = "c1d2e3f4a5b6"
+down_revision = "c3d4e5f6a7b8"
 branch_labels = None
 depends_on    = None
 

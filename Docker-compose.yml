@@ -1,0 +1,183 @@
+version: "3.9"
+
+services:
+
+  # ── DATABASES ──────────────────────────────────────────────
+
+  auth_db:
+    image: postgres:15
+    container_name: auth_db
+    environment:
+      POSTGRES_DB: auth_db
+      POSTGRES_USER: auth_user
+      POSTGRES_PASSWORD: auth_pass
+    volumes:
+      - auth_db_data:/var/lib/postgresql/data
+    ports:
+    - "5433:5432"
+    networks:
+      - ghabetna_net
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auth_user -d auth_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  alert_db:
+    image: postgis/postgis:15-3.3  # ← changer ici
+    container_name: alert_db
+    environment:
+      POSTGRES_DB: alert_db
+      POSTGRES_USER: alert_user
+      POSTGRES_PASSWORD: alert_pass
+    volumes:
+      - alert_db_data:/var/lib/postgresql/data
+    ports:
+      - "5435:5432"
+    networks:
+      - ghabetna_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U alert_user -d alert_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  forest_db:
+    image: postgis/postgis:15-3.3
+    container_name: forest_db
+    environment:
+      POSTGRES_DB: forest_db
+      POSTGRES_USER: forest_user
+      POSTGRES_PASSWORD: forest_pass
+    volumes:
+      - forest_db_data:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"
+
+    networks:
+      - ghabetna_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U forest_user -d forest_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── REDIS ──────────────────────────────────────────────────
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    networks:
+      - ghabetna_net
+    ports:
+      - "6380:6379"
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 100s
+      timeout: 100s
+      retries: 5
+
+  # ── MICROSERVICES ──────────────────────────────────────────
+
+  auth_ms:
+    build:
+      context: ./backend/auth_ms
+    container_name: auth_ms
+    env_file:
+      - ./backend/auth_ms/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://auth_user:auth_pass@auth_db:5432/auth_db
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "8001:8001"
+    depends_on:
+      auth_db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ghabetna_net
+
+  alert_ms:
+    build:
+      context: ./backend/alert_ms
+    container_name: alert_ms
+    env_file:
+      - ./backend/alert_ms/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://alert_user:alert_pass@alert_db:5432/alert_db
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "8003:8003"
+    depends_on:
+      alert_db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ghabetna_net
+
+  forest_ms:
+    build:
+      context: ./backend/forest_ms
+    container_name: forest_ms
+    environment:
+      DATABASE_URL: postgresql+asyncpg://forest_user:forest_pass@forest_db:5432/forest_db
+      DATABASE_URL_SYNC: postgresql+psycopg2://forest_user:forest_pass@forest_db:5432/forest_db
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "8002:8002"
+    depends_on:
+      forest_db:
+        condition: service_healthy
+      auth_ms:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    networks:
+      - ghabetna_net
+
+  gateway:
+    build:
+      context: ./gateway
+    container_name: gateway
+    env_file:
+      - ./gateway/.env
+    environment:
+      AUTH_MS_URL: http://auth_ms:8001
+      FOREST_MS_URL: http://forest_ms:8002
+      ALERT_MS_URL: http://alert_ms:8003
+    ports:
+      - "8000:8000"
+    depends_on:
+      - auth_ms
+      - forest_ms
+      - alert_ms
+    networks:
+      - ghabetna_net
+
+  # ── FRONTEND ───────────────────────────────────────────────
+
+  frontend:
+    build:
+      context: ./frontend/forest_app
+    container_name: frontend
+    ports:
+      - "8080:8080"
+    networks:
+      - ghabetna_net
+
+# ── VOLUMES ────────────────────────────────────────────────
+
+volumes:
+  auth_db_data:
+  alert_db_data:
+  forest_db_data:
+
+# ── NETWORK ────────────────────────────────────────────────
+
+networks:
+  ghabetna_net:
+    driver: bridge
