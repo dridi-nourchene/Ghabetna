@@ -26,12 +26,12 @@ class SupervisorForestState {
       parcellesByForest[forestId] ?? [];
 
   SupervisorForestState copyWith({
-    List<Forest>?               forests,
+    List<Forest>?                forests,
     Map<String, List<Parcelle>>? parcellesByForest,
-    Set<String>?                loadingParcelleIds,
-    bool?                       isLoading,
-    String?                     error,
-    bool                        clearError = false,
+    Set<String>?                 loadingParcelleIds,
+    bool?                        isLoading,
+    String?                      error,
+    bool                         clearError = false,
   }) =>
       SupervisorForestState(
         forests:            forests            ?? this.forests,
@@ -57,30 +57,52 @@ class SupervisorForestNotifier extends StateNotifier<SupervisorForestState> {
         _supervisorId = supervisorId,
         super(const SupervisorForestState());
 
-  /// Charge toutes les forêts puis filtre par superviseur_id
+  /// Charge toutes les forêts et filtre par superviseur_id
   Future<void> loadForests() async {
     if (!mounted) return;
+
+    // Si pas de supervisorId, impossible de filtrer
+    if (_supervisorId.isEmpty) {
+      print('[SUPERVISOR] supervisorId vide — impossible de filtrer les forêts');
+      state = state.copyWith(
+        isLoading: false,
+        error:     'Identifiant superviseur manquant — reconnectez-vous',
+      );
+      return;
+    }
+
     state = state.copyWith(isLoading: true, clearError: true);
 
     try {
-      // Récupérer toutes les forêts (page_size élevé)
       final result = await _service.getForests(pageSize: 500);
 
-      // Filtrer côté client : seulement celles assignées à ce superviseur
+      print('[SUPERVISOR] supervisorId = $_supervisorId');
+      print('[SUPERVISOR] total forêts reçues = ${result.items.length}');
+
+      // Log chaque forêt pour debug
+      for (final f in result.items) {
+        print('[SUPERVISOR] forêt "${f.name}" → superviseur_id = ${f.superviseurId}');
+      }
+
+      // Normalisation : trim + lowercase pour éviter les faux négatifs
+      final supervisorIdNorm = _supervisorId.trim().toLowerCase();
+
       final myForests = result.items.where((f) {
-        // Forest model expose superviseur_id (string ou null)
-        // On compare en ignorant la casse pour la robustesse
         final sid = f.superviseurId;
-        if (sid == null || sid.isEmpty) return false;
-        return sid.toLowerCase() == _supervisorId.toLowerCase();
+        if (sid == null || sid.trim().isEmpty) return false;
+        return sid.trim().toLowerCase() == supervisorIdNorm;
       }).toList();
+
+      print('[SUPERVISOR] forêts assignées trouvées = ${myForests.length}');
 
       if (!mounted) return;
       state = state.copyWith(forests: myForests, isLoading: false);
 
-      // Charger les parcelles pour chaque forêt en parallèle
-      await _loadAllParcelles(myForests);
+      if (myForests.isNotEmpty) {
+        await _loadAllParcelles(myForests);
+      }
     } catch (e) {
+      print('[SUPERVISOR] Erreur loadForests: $e');
       if (!mounted) return;
       state = state.copyWith(
         isLoading: false,
@@ -92,12 +114,10 @@ class SupervisorForestNotifier extends StateNotifier<SupervisorForestState> {
   Future<void> _loadAllParcelles(List<Forest> forests) async {
     if (!mounted) return;
 
-    // Marquer toutes comme en cours de chargement
     state = state.copyWith(
       loadingParcelleIds: forests.map((f) => f.id).toSet(),
     );
 
-    // Charger en parallèle
     await Future.wait(forests.map((f) => _loadParcelles(f.id)));
   }
 
@@ -118,6 +138,7 @@ class SupervisorForestNotifier extends StateNotifier<SupervisorForestState> {
             state.loadingParcelleIds.difference({forestId}),
       );
     } catch (e) {
+      print('[SUPERVISOR] Erreur loadParcelles($forestId): $e');
       if (!mounted) return;
       state = state.copyWith(
         loadingParcelleIds:
@@ -138,8 +159,13 @@ class SupervisorForestNotifier extends StateNotifier<SupervisorForestState> {
 
 final supervisorForestProvider = StateNotifierProvider<
     SupervisorForestNotifier, SupervisorForestState>((ref) {
-  final auth        = ref.watch(authProvider);
-  final supervisorId = auth.userId ?? '';   // userId exposé par AuthState
+  final auth = ref.watch(authProvider);
+
+  // ← Lire userId depuis authProvider (maintenant exposé correctement)
+  final supervisorId = auth.userId?.trim() ?? '';
+
+  print('[SUPERVISOR PROVIDER] userId depuis authProvider = "$supervisorId"');
+
   return SupervisorForestNotifier(
     service:      ForestService(),
     supervisorId: supervisorId,

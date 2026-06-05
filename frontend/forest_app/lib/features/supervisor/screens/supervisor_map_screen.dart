@@ -8,8 +8,8 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../features/alert/models/alert_map_model.dart';
 import '../../../features/alert/providers/alert_map_provider.dart';
 import '../../../features/forest/models/forest_model.dart';
-import '../../../features/forest/providers/forest_provider.dart';
 import '../../../features/forest/widgets/zoom_panel.dart';
+import '../providers/supervisor_forest_provider.dart';
 
 class SupervisorMapScreen extends ConsumerStatefulWidget {
   const SupervisorMapScreen({super.key});
@@ -26,9 +26,10 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return; // ← GUARD
+      if (!mounted) return;
       ref.read(alertMapProvider.notifier).startPolling();
-      ref.read(forestListProvider.notifier).loadForests();
+      // ← utiliser supervisorForestProvider au lieu de forestListProvider
+      ref.read(supervisorForestProvider.notifier).loadForests();
     });
   }
 
@@ -36,16 +37,6 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
   void dispose() {
     ref.read(alertMapProvider.notifier).stopPolling();
     super.dispose();
-  }
-
-  void _loadParcellesIfNeeded(List<Forest> forests) {
-    if (!mounted) return; // ← GUARD
-    final ps = ref.read(parcelleProvider);
-    for (final f in forests) {
-      if (!ps.byForest.containsKey(f.id) && !ps.loadingIds.contains(f.id)) {
-        ref.read(parcelleProvider.notifier).loadParcelles(f.id);
-      }
-    }
   }
 
   LatLng? _resolvePosition(AlertMapPoint point, List<Forest> forests) {
@@ -63,18 +54,12 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final alertState  = ref.watch(alertMapProvider);
-    final forestState = ref.watch(forestListProvider);
-    final ps          = ref.watch(parcelleProvider);
-    final forests     = forestState.forests;
+    final alertState      = ref.watch(alertMapProvider);
+    // ← supervisorForestProvider au lieu de forestListProvider
+    final supervisorState = ref.watch(supervisorForestProvider);
+    final forests         = supervisorState.forests;
 
-    if (forests.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return; // ← GUARD
-        _loadParcellesIfNeeded(forests);
-      });
-    }
-
+    // ── Polygones forêts (seulement celles du superviseur) ──
     final forestPolygons = forests.map((f) {
       final pts = f.geojson.latLngList
           .map((p) => LatLng(p[0], p[1]))
@@ -82,30 +67,45 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
       if (pts.isEmpty) return null;
       return Polygon(
         points:            pts,
+        // même style que admin_forests_screen
         color:             const Color(0x222E7D32),
         borderColor:       const Color(0xFF2E7D32),
-        borderStrokeWidth: 1.5,
+        borderStrokeWidth: 1.8,
         isFilled:          true,
       );
     }).whereType<Polygon>().toList();
 
+    // ── Polygones parcelles (seulement parcelles des forêts du superviseur) ──
     final parcellePolygons = <Polygon>[];
-    for (final fId in ps.byForest.keys) {
-      for (final p in ps.forForest(fId)) {
+    for (final f in forests) {
+      for (final p in supervisorState.parcellesFor(f.id)) {
         final pts = p.geojson.latLngList
             .map((pt) => LatLng(pt[0], pt[1]))
             .toList();
         if (pts.isEmpty) continue;
         parcellePolygons.add(Polygon(
           points:            pts,
+          // même style que admin_forests_screen
           color:             const Color(0x333B82F6),
           borderColor:       const Color(0xFF2563EB),
-          borderStrokeWidth: 1.2,
+          borderStrokeWidth: 1.5,
           isFilled:          true,
         ));
       }
     }
 
+    // ── Labels forêts (markers) ──────────────────────────────
+    final forestLabelMarkers = forests
+        .where((f) => f.centroidLat != null)
+        .map((f) => Marker(
+              point:  LatLng(f.centroidLat!, f.centroidLng!),
+              width:  160,
+              height: 40,
+              child: _ForestLabel(name: f.name),
+            ))
+        .toList();
+
+    // ── Markers alertes ──────────────────────────────────────
     final alertMarkers = <Marker>[];
     for (final point in alertState.points) {
       final position = _resolvePosition(point, forests);
@@ -125,7 +125,9 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
         ),
       ));
     }
-    
+
+    final isLoading = supervisorState.isLoading || alertState.isLoading;
+
     return Stack(children: [
       FlutterMap(
         mapController: _mapController,
@@ -133,9 +135,10 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
           initialCenter: LatLng(33.8869, 9.5375),
           initialZoom:   7.0,
           minZoom:       4,
-          maxZoom:       18,
+          maxZoom:       19,
         ),
         children: [
+          // ← même tile que admin (CartoDB Voyager)
           TileLayer(
             urlTemplate:
                 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
@@ -147,6 +150,7 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
             PolygonLayer(polygons: forestPolygons),
           if (parcellePolygons.isNotEmpty)
             PolygonLayer(polygons: parcellePolygons),
+          MarkerLayer(markers: forestLabelMarkers),
           MarkerLayer(markers: alertMarkers),
           const RichAttributionWidget(attributions: [
             TextSourceAttribution('© CartoDB © OpenStreetMap'),
@@ -154,26 +158,124 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
         ],
       ),
 
+      // ── Indicateur chargement ──────────────────────────────
+      if (isLoading)
+        const Positioned(
+          top: 12, left: 0, right: 0,
+          child: Center(
+            child: _LoadingChip(),
+          ),
+        ),
+
+      // ── Polling indicator + refresh ────────────────────────
       Positioned(
         top: 16, right: 16,
         child: _PollingIndicator(
           alertCount:  alertState.points.length,
           lastRefresh: alertState.lastRefresh,
-          isLoading:   alertState.isLoading || forestState.isLoading,
-          onRefresh:   () => ref.read(alertMapProvider.notifier).refreshNow(),
+          isLoading:   isLoading,
+          onRefresh:   () {
+            ref.read(alertMapProvider.notifier).refreshNow();
+            ref.read(supervisorForestProvider.notifier).loadForests();
+          },
         ),
       ),
 
+      // ── Légende ────────────────────────────────────────────
       const Positioned(
         bottom: 24, left: 16,
         child: _Legend(),
       ),
-        Positioned(
-          right: 14,
-          bottom: 40,
-          child: ZoomPanel(mapController: _mapController),
-        ),]);
+
+      // ── Zoom controls ──────────────────────────────────────
+      Positioned(
+        right: 14,
+        bottom: 40,
+        child: ZoomPanel(mapController: _mapController),
+      ),
+
+      // ── Message si aucune forêt assignée ──────────────────
+      if (!isLoading && forests.isEmpty)
+        Center(
+          child: Container(
+            margin: const EdgeInsets.all(32),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            decoration: BoxDecoration(
+              color:        Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: [
+                BoxShadow(
+                  color:      Colors.black.withOpacity(0.08),
+                  blurRadius: 16,
+                  offset:     const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.park_outlined,
+                  size: 40, color: AppColors.primaryMid),
+              const SizedBox(height: 12),
+              const Text(
+                'Aucune forêt assignée',
+                style: TextStyle(
+                    fontSize:   16,
+                    fontWeight: FontWeight.w700,
+                    color:      AppColors.textPrimary),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Aucune forêt ne vous a encore été assignée.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 13,
+                    color:    AppColors.textMuted),
+              ),
+            ]),
+          ),
+        ),
+    ]);
   }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  FOREST LABEL (même style que admin)
+// ══════════════════════════════════════════════════════════════
+
+class _ForestLabel extends StatelessWidget {
+  final String name;
+  const _ForestLabel({required this.name});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color:        Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFF2E7D32), width: 1.2),
+          boxShadow: [
+            BoxShadow(
+              color:      Colors.black.withOpacity(0.12),
+              blurRadius: 6,
+              offset:     const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.park_outlined,
+              size: 12, color: Color(0xFF2E7D32)),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              name,
+              overflow:  TextOverflow.ellipsis,
+              style: const TextStyle(
+                  fontSize:   11,
+                  fontWeight: FontWeight.w600,
+                  color:      Color(0xFF1A4731)),
+            ),
+          ),
+        ]),
+      );
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -265,6 +367,39 @@ class _TrianglePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_TrianglePainter old) => old.color != color;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  LOADING CHIP
+// ══════════════════════════════════════════════════════════════
+
+class _LoadingChip extends StatelessWidget {
+  const _LoadingChip();
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color:        Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+                color:      Colors.black.withOpacity(0.1),
+                blurRadius: 8),
+          ],
+        ),
+        child: const Row(mainAxisSize: MainAxisSize.min, children: [
+          SizedBox(
+            width: 14, height: 14,
+            child: CircularProgressIndicator(
+                strokeWidth: 2, color: AppColors.primaryMid),
+          ),
+          SizedBox(width: 8),
+          Text('Chargement...',
+              style: TextStyle(
+                  fontSize: 12, color: AppColors.textSecondary)),
+        ]),
+      );
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -374,13 +509,46 @@ class _Legend extends StatelessWidget {
                     fontSize:   11,
                     fontWeight: FontWeight.w600,
                     color:      AppColors.textSecondary)),
+            const SizedBox(height: 6),
+            // Forêt
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              Container(
+                width: 16, height: 16,
+                decoration: BoxDecoration(
+                  color:  const Color(0x222E7D32),
+                  border: Border.all(
+                      color: const Color(0xFF2E7D32), width: 1.5),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Text('Forêt assignée',
+                  style: TextStyle(
+                      fontSize: 10, color: AppColors.textPrimary)),
+            ]),
+            const SizedBox(height: 4),
+            // Parcelle
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              Container(
+                width: 16, height: 16,
+                decoration: BoxDecoration(
+                  color:  const Color(0x333B82F6),
+                  border: Border.all(
+                      color: const Color(0xFF2563EB), width: 1.5),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Text('Parcelle',
+                  style: TextStyle(
+                      fontSize: 10, color: AppColors.textPrimary)),
+            ]),
             const SizedBox(height: 4),
             _LegendTriangle(
                 color: const Color(0xFFD32F2F), label: 'Alerte en cours'),
             const SizedBox(height: 4),
             _LegendTriangle(
                 color: const Color(0xFF388E3C), label: 'Alerte traitée'),
-            const SizedBox(height: 6),
           ],
         ),
       );
