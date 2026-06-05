@@ -9,6 +9,7 @@ import app.models.alert  # noqa — enregistre le modèle
 
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
+(UPLOAD_DIR / "alerts").mkdir(exist_ok=True)
 
 app = FastAPI(
     title="Ghabetna — Alert Service",

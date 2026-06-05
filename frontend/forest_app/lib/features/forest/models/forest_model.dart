@@ -1,4 +1,3 @@
-// features/forest/models/forest_model.dart
 
 class GeoJSONPolygon {
   final String type;
@@ -39,6 +38,7 @@ class Forest {
   final double? areaHectares;
   final double? centroidLat;
   final double? centroidLng;
+  final String? superviseurId;   // ← AJOUTÉ
   final String  createdBy;
   final String  createdAt;
   final String? updatedAt;
@@ -50,6 +50,7 @@ class Forest {
     this.areaHectares,
     this.centroidLat,
     this.centroidLng,
+    this.superviseurId,           // ← AJOUTÉ
     required this.createdBy,
     required this.createdAt,
     this.updatedAt,
@@ -62,6 +63,7 @@ class Forest {
         areaHectares:  (json['area_hectares'] as num?)?.toDouble(),
         centroidLat:   (json['centroid_lat']  as num?)?.toDouble(),
         centroidLng:   (json['centroid_lng']  as num?)?.toDouble(),
+        superviseurId: json['superviseur_id'] as String?,  // ← AJOUTÉ
         createdBy:     json['created_by'],
         createdAt:     json['created_at'],
         updatedAt:     json['updated_at'],
@@ -74,6 +76,7 @@ class Forest {
         'area_hectares':  areaHectares,
         'centroid_lat':   centroidLat,
         'centroid_lng':   centroidLng,
+        'superviseur_id': superviseurId,   // ← AJOUTÉ
         'created_by':     createdBy,
         'created_at':     createdAt,
         'updated_at':     updatedAt,
@@ -88,7 +91,7 @@ class Forest {
   }
 }
 
-// ── Parcelle ──────────────────────────────────────────────
+// ── Parcelle ──────────────────────────────────────────────────
 
 class Parcelle {
   final String  id;
@@ -134,7 +137,7 @@ class Parcelle {
   }
 }
 
-// ── Paginated response ────────────────────────────────────
+// ── Paginated responses ───────────────────────────────────────
 
 class PaginatedForests {
   final int          total;

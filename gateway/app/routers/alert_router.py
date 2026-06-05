@@ -172,3 +172,21 @@ async def get_alert(alert_id: str, request: Request):
         request,
         f"{ALERT_SERVICE_URL}/api/alerts/{alert_id}",
     )
+
+
+@router.get("/uploads/{file_path:path}")
+async def serve_upload(file_path: str, request: Request):
+    """Proxy les fichiers statiques d'uploads vers alert_ms."""
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.get(
+            f"{ALERT_SERVICE_URL}/uploads/{file_path}",
+        )
+    if not response.content:
+        return Response(status_code=404)
+    # Détecter le content-type depuis l'extension
+    content_type = response.headers.get("content-type", "image/jpeg")
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        media_type=content_type,
+    )

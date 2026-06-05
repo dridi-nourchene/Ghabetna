@@ -141,8 +141,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       child: Image.asset(
         'assets/images/login.png',
         fit:    BoxFit.contain,
-        width:  1200,
-        height: 450,
+        width:  1700,
+        height: 750,
       ),
     ),
   ),

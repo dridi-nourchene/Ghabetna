@@ -9,6 +9,7 @@ import '../../../features/alert/models/alert_map_model.dart';
 import '../../../features/alert/providers/alert_map_provider.dart';
 import '../../../features/forest/models/forest_model.dart';
 import '../../../features/forest/providers/forest_provider.dart';
+import '../../../features/forest/widgets/zoom_panel.dart';
 
 class SupervisorMapScreen extends ConsumerStatefulWidget {
   const SupervisorMapScreen({super.key});
@@ -124,7 +125,7 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
         ),
       ));
     }
-
+    
     return Stack(children: [
       FlutterMap(
         mapController: _mapController,
@@ -167,7 +168,11 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
         bottom: 24, left: 16,
         child: _Legend(),
       ),
-    ]);
+        Positioned(
+          right: 14,
+          bottom: 40,
+          child: ZoomPanel(mapController: _mapController),
+        ),]);
   }
 }
 

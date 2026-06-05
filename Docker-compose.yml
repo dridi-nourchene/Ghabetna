@@ -109,8 +109,11 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://alert_user:alert_pass@alert_db:5432/alert_db
       REDIS_URL: redis://redis:6379
+      BASE_URL: http://192.168.1.9:8000
     ports:
       - "8003:8003"
+    volumes:
+    - alert_uploads:/app/uploads
     depends_on:
       alert_db:
         condition: service_healthy
@@ -175,6 +178,7 @@ volumes:
   auth_db_data:
   alert_db_data:
   forest_db_data:
+  alert_uploads:
 
 # ── NETWORK ────────────────────────────────────────────────
 

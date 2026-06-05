@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
-
+import '../../../features/forest/widgets/zoom_panel.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../features/forest/constants/forest_constant.dart';
 import '../../../features/forest/models/forest_model.dart';
@@ -763,7 +763,7 @@ class _AdminForestsScreenState
           ],
         ),
       ),
-
+      
       // ── Overlays ──────────────────────────────────────
       if (forestState.isLoading)
         const Positioned(
@@ -785,6 +785,11 @@ class _AdminForestsScreenState
             ),
           ),
         ),
+        Positioned(
+                right: 14,
+                bottom: 40,
+                child: ZoomPanel(mapController: _mapController),
+              ),
     ]);
   }
 }
