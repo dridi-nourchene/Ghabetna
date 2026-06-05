@@ -1,9 +1,4 @@
 // features/supervisor/screens/supervisor_shell.dart
-//
-// Shell principal du superviseur
-// Même structure qu'AdminShell mais menu adapté au rôle superviseur :
-// • Carte & Alertes (avec polling temps réel)
-// • Historique des alertes
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -35,19 +30,30 @@ class _SupervisorShellState extends ConsumerState<SupervisorShell> {
 
     return Scaffold(
       backgroundColor: AppColors.bgPage,
-      body: Column(children: [
-        _TopBar(onMenuTap: _toggleSidebar, auth: auth),
-        Expanded(
-          child: Row(children: [
-            _Sidebar(
-              expanded:    _expanded,
-              auth:        auth,
-              onLogoutTap: _handleLogout,
+      // ← FIX : utiliser Scaffold avec appBar + body séparés
+      // pour que flutter_map et les autres screens aient
+      // une hauteur définie correctement
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(58),
+        child: _TopBar(onMenuTap: _toggleSidebar, auth: auth),
+      ),
+      body: Row(
+        children: [
+          _Sidebar(
+            expanded:    _expanded,
+            auth:        auth,
+            onLogoutTap: _handleLogout,
+          ),
+          // ← FIX : Expanded + SizedBox.expand pour que le child
+          // ait une contrainte de taille explicite (width + height)
+          // sans ça flutter_map ne peut pas calculer sa hauteur
+          Expanded(
+            child: SizedBox.expand(
+              child: widget.child,
             ),
-            Expanded(child: ClipRect(child: widget.child)),
-          ]),
-        ),
-      ]),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -282,7 +288,6 @@ class _Sidebar extends StatelessWidget {
             child: Column(children: [
               const SizedBox(height: 12),
 
-              // ── Navigation ───────────────────────────────
               _SidebarItem(
                 icon:            Icons.map_outlined,
                 label:           'Carte & Alertes',
@@ -297,8 +302,6 @@ class _Sidebar extends StatelessWidget {
                 currentLocation: location,
                 expanded:        expanded,
               ),
-
-             
             ]),
           ),
         ),
@@ -409,15 +412,4 @@ class _SidebarItem extends StatelessWidget {
       ),
     );
   }
-}
-
-class _SidebarDivider extends StatelessWidget {
-  const _SidebarDivider();
-
-  @override
-  Widget build(BuildContext context) => Container(
-        margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-        height: 0.5,
-        color:  AppColors.sidebarDivider,
-      );
 }
