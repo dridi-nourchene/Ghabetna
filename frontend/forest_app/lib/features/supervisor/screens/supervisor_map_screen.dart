@@ -8,9 +8,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../features/alert/models/alert_map_model.dart';
 import '../../../features/alert/providers/alert_map_provider.dart';
 import '../../../features/forest/models/forest_model.dart';
-// ← SUPPRIMÉ : forestListProvider et parcelleProvider
-// ← AJOUTÉ : supervisorForestProvider pour filtrer par superviseur_id
-import '../../supervisor/providers/supervisor_forest_provider.dart';
+import '../../../features/forest/providers/forest_provider.dart';
 import '../../../features/forest/widgets/zoom_panel.dart';
 
 class SupervisorMapScreen extends ConsumerStatefulWidget {
@@ -28,11 +26,9 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      // Démarrer le polling des alertes
+      if (!mounted) return; // ← GUARD
       ref.read(alertMapProvider.notifier).startPolling();
-      // Charger les forêts assignées au superviseur (+ leurs parcelles)
-      ref.read(supervisorForestProvider.notifier).loadForests();
+      ref.read(forestListProvider.notifier).loadForests();
     });
   }
 
@@ -42,9 +38,16 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
     super.dispose();
   }
 
-  /// Résout la position d'un point d'alerte :
-  /// - GPS exact si disponible
-  /// - sinon centroïde de la forêt parente
+  void _loadParcellesIfNeeded(List<Forest> forests) {
+    if (!mounted) return; // ← GUARD
+    final ps = ref.read(parcelleProvider);
+    for (final f in forests) {
+      if (!ps.byForest.containsKey(f.id) && !ps.loadingIds.contains(f.id)) {
+        ref.read(parcelleProvider.notifier).loadParcelles(f.id);
+      }
+    }
+  }
+
   LatLng? _resolvePosition(AlertMapPoint point, List<Forest> forests) {
     if (point.hasExactLocation) {
       return LatLng(point.incidentLat!, point.incidentLng!);
@@ -60,10 +63,17 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final alertState = ref.watch(alertMapProvider);
-    // ← CHANGÉ : utiliser supervisorForestProvider au lieu de forestListProvider
-    final supForestState = ref.watch(supervisorForestProvider);
-    final forests = supForestState.forests; // seulement les forêts assignées
+    final alertState  = ref.watch(alertMapProvider);
+    final forestState = ref.watch(forestListProvider);
+    final ps          = ref.watch(parcelleProvider);
+    final forests     = forestState.forests;
+
+    if (forests.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return; // ← GUARD
+        _loadParcellesIfNeeded(forests);
+      });
+    }
 
     final forestPolygons = forests.map((f) {
       final pts = f.geojson.latLngList
@@ -79,10 +89,9 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
       );
     }).whereType<Polygon>().toList();
 
-    // ← CHANGÉ : parcelles depuis supervisorForestProvider
     final parcellePolygons = <Polygon>[];
-    for (final forest in forests) {
-      for (final p in supForestState.parcellesFor(forest.id)) {
+    for (final fId in ps.byForest.keys) {
+      for (final p in ps.forForest(fId)) {
         final pts = p.geojson.latLngList
             .map((pt) => LatLng(pt[0], pt[1]))
             .toList();
@@ -116,9 +125,7 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
         ),
       ));
     }
-
-    final isLoading = alertState.isLoading || supForestState.isLoading;
-
+    
     return Stack(children: [
       FlutterMap(
         mapController: _mapController,
@@ -129,13 +136,12 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
           maxZoom:       18,
         ),
         children: [
-          // ← FIX MAP GRISE : utiliser OpenStreetMap sans sous-domaines {s}
-          //   CartoDB avec {s} ne fonctionne pas bien sur Flutter Web
           TileLayer(
             urlTemplate:
-                'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+            subdomains:           const ['a', 'b', 'c', 'd'],
             userAgentPackageName: 'com.ghabetna.forest_app',
-            maxZoom: 19,
+            maxZoom:              19,
           ),
           if (forestPolygons.isNotEmpty)
             PolygonLayer(polygons: forestPolygons),
@@ -143,35 +149,30 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
             PolygonLayer(polygons: parcellePolygons),
           MarkerLayer(markers: alertMarkers),
           const RichAttributionWidget(attributions: [
-            TextSourceAttribution('© OpenStreetMap contributors'),
+            TextSourceAttribution('© CartoDB © OpenStreetMap'),
           ]),
         ],
       ),
 
-      // Indicateur de polling + compteur alertes
       Positioned(
         top: 16, right: 16,
         child: _PollingIndicator(
           alertCount:  alertState.points.length,
           lastRefresh: alertState.lastRefresh,
-          isLoading:   isLoading,
+          isLoading:   alertState.isLoading || forestState.isLoading,
           onRefresh:   () => ref.read(alertMapProvider.notifier).refreshNow(),
         ),
       ),
 
-      // Légende
       const Positioned(
         bottom: 24, left: 16,
         child: _Legend(),
       ),
-
-      // Boutons zoom
-      Positioned(
-        right: 14,
-        bottom: 40,
-        child: ZoomPanel(mapController: _mapController),
-      ),
-    ]);
+        Positioned(
+          right: 14,
+          bottom: 40,
+          child: ZoomPanel(mapController: _mapController),
+        ),]);
   }
 }
 
