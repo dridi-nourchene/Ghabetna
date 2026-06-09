@@ -1,11 +1,9 @@
+// frontend/forest_app/lib/features/supervisor/providers/supervisor_forest_provider.dart
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:forest_app/features/forest/models/forest_model.dart';
 import 'package:forest_app/features/forest/services/forest_service.dart';
 import 'package:forest_app/features/auth/providers/auth_provider.dart';
-
-// ─────────────────────────────────────────────────────────────
-//  STATE
-// ─────────────────────────────────────────────────────────────
 
 class SupervisorForestState {
   final List<Forest>                  forests;
@@ -42,10 +40,6 @@ class SupervisorForestState {
       );
 }
 
-// ─────────────────────────────────────────────────────────────
-//  NOTIFIER
-// ─────────────────────────────────────────────────────────────
-
 class SupervisorForestNotifier extends StateNotifier<SupervisorForestState> {
   final ForestService _service;
   final String        _supervisorId;
@@ -57,16 +51,13 @@ class SupervisorForestNotifier extends StateNotifier<SupervisorForestState> {
         _supervisorId = supervisorId,
         super(const SupervisorForestState());
 
-  /// Charge toutes les forêts et filtre par superviseur_id
   Future<void> loadForests() async {
     if (!mounted) return;
 
-    // Si pas de supervisorId, impossible de filtrer
     if (_supervisorId.isEmpty) {
-      print('[SUPERVISOR] supervisorId vide — impossible de filtrer les forêts');
       state = state.copyWith(
         isLoading: false,
-        error:     'Identifiant superviseur manquant — reconnectez-vous',
+        error: 'Identifiant superviseur manquant — reconnectez-vous',
       );
       return;
     }
@@ -74,17 +65,10 @@ class SupervisorForestNotifier extends StateNotifier<SupervisorForestState> {
     state = state.copyWith(isLoading: true, clearError: true);
 
     try {
-      final result = await _service.getForests(pageSize: 500);
+      final result = await _service.getForests(pageSize: 100);
 
-      print('[SUPERVISOR] supervisorId = $_supervisorId');
-      print('[SUPERVISOR] total forêts reçues = ${result.items.length}');
+      if (!mounted) return;
 
-      // Log chaque forêt pour debug
-      for (final f in result.items) {
-        print('[SUPERVISOR] forêt "${f.name}" → superviseur_id = ${f.superviseurId}');
-      }
-
-      // Normalisation : trim + lowercase pour éviter les faux négatifs
       final supervisorIdNorm = _supervisorId.trim().toLowerCase();
 
       final myForests = result.items.where((f) {
@@ -93,16 +77,20 @@ class SupervisorForestNotifier extends StateNotifier<SupervisorForestState> {
         return sid.trim().toLowerCase() == supervisorIdNorm;
       }).toList();
 
-      print('[SUPERVISOR] forêts assignées trouvées = ${myForests.length}');
+      print('[SUPERVISOR] supervisorId = $_supervisorId');
+      print('[SUPERVISOR] total forêts reçues = ${result.items.length}');
+      print('[SUPERVISOR] forêts assignées = ${myForests.length}');
 
-      if (!mounted) return;
+      for (final f in result.items) {
+        print('[SUPERVISOR] "${f.name}" → superviseur_id = ${f.superviseurId}');
+      }
+
       state = state.copyWith(forests: myForests, isLoading: false);
 
       if (myForests.isNotEmpty) {
         await _loadAllParcelles(myForests);
       }
     } catch (e) {
-      print('[SUPERVISOR] Erreur loadForests: $e');
       if (!mounted) return;
       state = state.copyWith(
         isLoading: false,
@@ -113,11 +101,9 @@ class SupervisorForestNotifier extends StateNotifier<SupervisorForestState> {
 
   Future<void> _loadAllParcelles(List<Forest> forests) async {
     if (!mounted) return;
-
     state = state.copyWith(
       loadingParcelleIds: forests.map((f) => f.id).toSet(),
     );
-
     await Future.wait(forests.map((f) => _loadParcelles(f.id)));
   }
 
@@ -126,7 +112,7 @@ class SupervisorForestNotifier extends StateNotifier<SupervisorForestState> {
     try {
       final result = await _service.getParcelles(
         forestId: forestId,
-        pageSize: 500,
+        pageSize: 100,
       );
       if (!mounted) return;
       state = state.copyWith(
@@ -138,7 +124,6 @@ class SupervisorForestNotifier extends StateNotifier<SupervisorForestState> {
             state.loadingParcelleIds.difference({forestId}),
       );
     } catch (e) {
-      print('[SUPERVISOR] Erreur loadParcelles($forestId): $e');
       if (!mounted) return;
       state = state.copyWith(
         loadingParcelleIds:
@@ -153,18 +138,12 @@ class SupervisorForestNotifier extends StateNotifier<SupervisorForestState> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-//  PROVIDER
-// ─────────────────────────────────────────────────────────────
-
 final supervisorForestProvider = StateNotifierProvider<
     SupervisorForestNotifier, SupervisorForestState>((ref) {
   final auth = ref.watch(authProvider);
-
-  // ← Lire userId depuis authProvider (maintenant exposé correctement)
   final supervisorId = auth.userId?.trim() ?? '';
 
-  print('[SUPERVISOR PROVIDER] userId depuis authProvider = "$supervisorId"');
+  print('[SUPERVISOR PROVIDER] userId = "$supervisorId"');
 
   return SupervisorForestNotifier(
     service:      ForestService(),

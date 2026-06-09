@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     SECRET_KEY:   str = "dev-secret-key"
     PORT:         int = 8003
     # URL de base pour construire les liens images
-    BASE_URL:     str = "http://192.168.1.9:8000"
+    BASE_URL:     str = "http://10.173.114.105:8000"
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

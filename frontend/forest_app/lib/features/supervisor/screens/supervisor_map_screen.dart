@@ -1,3 +1,5 @@
+
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -27,9 +29,16 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+
+      // CORRECTION : toujours démarrer le polling des alertes
       ref.read(alertMapProvider.notifier).startPolling();
-      // ← utiliser supervisorForestProvider au lieu de forestListProvider
-      ref.read(supervisorForestProvider.notifier).loadForests();
+
+      // CORRECTION : charger les forêts seulement si pas déjà chargées
+      // Évite un double-chargement si le screen est rebuild
+      final forestState = ref.read(supervisorForestProvider);
+      if (forestState.forests.isEmpty && !forestState.isLoading) {
+        ref.read(supervisorForestProvider.notifier).loadForests();
+      }
     });
   }
 
@@ -55,11 +64,9 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
   @override
   Widget build(BuildContext context) {
     final alertState      = ref.watch(alertMapProvider);
-    // ← supervisorForestProvider au lieu de forestListProvider
     final supervisorState = ref.watch(supervisorForestProvider);
     final forests         = supervisorState.forests;
 
-    // ── Polygones forêts (seulement celles du superviseur) ──
     final forestPolygons = forests.map((f) {
       final pts = f.geojson.latLngList
           .map((p) => LatLng(p[0], p[1]))
@@ -67,7 +74,6 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
       if (pts.isEmpty) return null;
       return Polygon(
         points:            pts,
-        // même style que admin_forests_screen
         color:             const Color(0x222E7D32),
         borderColor:       const Color(0xFF2E7D32),
         borderStrokeWidth: 1.8,
@@ -75,7 +81,6 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
       );
     }).whereType<Polygon>().toList();
 
-    // ── Polygones parcelles (seulement parcelles des forêts du superviseur) ──
     final parcellePolygons = <Polygon>[];
     for (final f in forests) {
       for (final p in supervisorState.parcellesFor(f.id)) {
@@ -85,7 +90,6 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
         if (pts.isEmpty) continue;
         parcellePolygons.add(Polygon(
           points:            pts,
-          // même style que admin_forests_screen
           color:             const Color(0x333B82F6),
           borderColor:       const Color(0xFF2563EB),
           borderStrokeWidth: 1.5,
@@ -94,23 +98,10 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
       }
     }
 
-    // ── Labels forêts (markers) ──────────────────────────────
-    final forestLabelMarkers = forests
-        .where((f) => f.centroidLat != null)
-        .map((f) => Marker(
-              point:  LatLng(f.centroidLat!, f.centroidLng!),
-              width:  160,
-              height: 40,
-              child: _ForestLabel(name: f.name),
-            ))
-        .toList();
-
-    // ── Markers alertes ──────────────────────────────────────
     final alertMarkers = <Marker>[];
     for (final point in alertState.points) {
       final position = _resolvePosition(point, forests);
       if (position == null) continue;
-
       alertMarkers.add(Marker(
         point:  position,
         width:  40,
@@ -138,7 +129,6 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
           maxZoom:       19,
         ),
         children: [
-          // ← même tile que admin (CartoDB Voyager)
           TileLayer(
             urlTemplate:
                 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
@@ -150,7 +140,6 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
             PolygonLayer(polygons: forestPolygons),
           if (parcellePolygons.isNotEmpty)
             PolygonLayer(polygons: parcellePolygons),
-          MarkerLayer(markers: forestLabelMarkers),
           MarkerLayer(markers: alertMarkers),
           const RichAttributionWidget(attributions: [
             TextSourceAttribution('© CartoDB © OpenStreetMap'),
@@ -158,16 +147,40 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
         ],
       ),
 
-      // ── Indicateur chargement ──────────────────────────────
       if (isLoading)
         const Positioned(
           top: 12, left: 0, right: 0,
-          child: Center(
-            child: _LoadingChip(),
+          child: Center(child: _LoadingChip()),
+        ),
+
+      // CORRECTION : afficher l'erreur si présente
+      if (supervisorState.error != null && !isLoading)
+        Positioned(
+          top: 12, left: 16, right: 16,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color:        AppColors.danger.withOpacity(0.9),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(children: [
+              const Icon(Icons.error_outline, color: Colors.white, size: 16),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  supervisorState.error!,
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                ),
+              ),
+              GestureDetector(
+                onTap: () =>
+                    ref.read(supervisorForestProvider.notifier).clearError(),
+                child: const Icon(Icons.close, color: Colors.white, size: 16),
+              ),
+            ]),
           ),
         ),
 
-      // ── Polling indicator + refresh ────────────────────────
       Positioned(
         top: 16, right: 16,
         child: _PollingIndicator(
@@ -181,21 +194,17 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
         ),
       ),
 
-      // ── Légende ────────────────────────────────────────────
       const Positioned(
         bottom: 24, left: 16,
         child: _Legend(),
       ),
 
-      // ── Zoom controls ──────────────────────────────────────
       Positioned(
-        right: 14,
-        bottom: 40,
+        right: 14, bottom: 40,
         child: ZoomPanel(mapController: _mapController),
       ),
 
-      // ── Message si aucune forêt assignée ──────────────────
-      if (!isLoading && forests.isEmpty)
+      if (!isLoading && forests.isEmpty && supervisorState.error == null)
         Center(
           child: Container(
             margin: const EdgeInsets.all(32),
@@ -223,12 +232,10 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
                     color:      AppColors.textPrimary),
               ),
               const SizedBox(height: 6),
-              Text(
+              const Text(
                 'Aucune forêt ne vous a encore été assignée.',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontSize: 13,
-                    color:    AppColors.textMuted),
+                style: TextStyle(fontSize: 13, color: AppColors.textMuted),
               ),
             ]),
           ),
@@ -237,50 +244,8 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
   }
 }
 
-// ══════════════════════════════════════════════════════════════
-//  FOREST LABEL (même style que admin)
-// ══════════════════════════════════════════════════════════════
+// ── Widgets identiques à la version originale ─────────────────
 
-class _ForestLabel extends StatelessWidget {
-  final String name;
-  const _ForestLabel({required this.name});
-
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-          color:        Colors.white,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: const Color(0xFF2E7D32), width: 1.2),
-          boxShadow: [
-            BoxShadow(
-              color:      Colors.black.withOpacity(0.12),
-              blurRadius: 6,
-              offset:     const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.park_outlined,
-              size: 12, color: Color(0xFF2E7D32)),
-          const SizedBox(width: 4),
-          Flexible(
-            child: Text(
-              name,
-              overflow:  TextOverflow.ellipsis,
-              style: const TextStyle(
-                  fontSize:   11,
-                  fontWeight: FontWeight.w600,
-                  color:      Color(0xFF1A4731)),
-            ),
-          ),
-        ]),
-      );
-}
-
-// ══════════════════════════════════════════════════════════════
-//  TRIANGLE ALERTE
-// ══════════════════════════════════════════════════════════════
 
 class _AlertTriangle extends StatelessWidget {
   final AlertType   type;
@@ -309,18 +274,16 @@ class _AlertTriangle extends StatelessWidget {
         child: const SizedBox(width: size, height: size),
       ),
       Positioned(
-        top: size * 0.15,
-        left: 0, right: 0,
+        top: size * 0.15, left: 0, right: 0,
         child: Center(
-          child: Text(type.emoji,
-              style: const TextStyle(fontSize: 12)),
+          child: Text(type.emoji, style: const TextStyle(fontSize: 12)),
         ),
       ),
       if (isApproximate)
         Positioned(
           top: -4, right: -4,
           child: Container(
-            width:  14, height: 14,
+            width: 14, height: 14,
             decoration: BoxDecoration(
               color:  const Color(0xFFFF8F00),
               shape:  BoxShape.circle,
@@ -350,17 +313,14 @@ class _TrianglePainter extends CustomPainter {
       ..color      = Colors.black.withOpacity(0.25)
       ..style      = PaintingStyle.fill
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
-
     final fillPaint = Paint()
       ..color = color
       ..style = PaintingStyle.fill;
-
     final path = ui.Path()
       ..moveTo(size.width / 2, 0)
       ..lineTo(size.width, size.height)
       ..lineTo(0, size.height)
       ..close();
-
     canvas.drawPath(path.shift(const Offset(1.5, 2.5)), shadowPaint);
     canvas.drawPath(path, fillPaint);
   }
@@ -368,10 +328,6 @@ class _TrianglePainter extends CustomPainter {
   @override
   bool shouldRepaint(_TrianglePainter old) => old.color != color;
 }
-
-// ══════════════════════════════════════════════════════════════
-//  LOADING CHIP
-// ══════════════════════════════════════════════════════════════
 
 class _LoadingChip extends StatelessWidget {
   const _LoadingChip();
@@ -382,11 +338,7 @@ class _LoadingChip extends StatelessWidget {
         decoration: BoxDecoration(
           color:        Colors.white,
           borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-                color:      Colors.black.withOpacity(0.1),
-                blurRadius: 8),
-          ],
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8)],
         ),
         child: const Row(mainAxisSize: MainAxisSize.min, children: [
           SizedBox(
@@ -396,15 +348,10 @@ class _LoadingChip extends StatelessWidget {
           ),
           SizedBox(width: 8),
           Text('Chargement...',
-              style: TextStyle(
-                  fontSize: 12, color: AppColors.textSecondary)),
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
         ]),
       );
 }
-
-// ══════════════════════════════════════════════════════════════
-//  POLLING INDICATOR
-// ══════════════════════════════════════════════════════════════
 
 class _PollingIndicator extends StatelessWidget {
   final int          alertCount;
@@ -433,11 +380,7 @@ class _PollingIndicator extends StatelessWidget {
           color:        Colors.white,
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
-            BoxShadow(
-              color:      Colors.black.withOpacity(0.1),
-              blurRadius: 12,
-              offset:     const Offset(0, 4),
-            ),
+            BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 12, offset: const Offset(0, 4)),
           ],
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -461,8 +404,7 @@ class _PollingIndicator extends StatelessWidget {
                     color:      AppColors.textPrimary),
               ),
               Text(_lastRefreshText,
-                  style: const TextStyle(
-                      fontSize: 10, color: AppColors.textMuted)),
+                  style: const TextStyle(fontSize: 10, color: AppColors.textMuted)),
             ],
           ),
           const SizedBox(width: 10),
@@ -473,16 +415,11 @@ class _PollingIndicator extends StatelessWidget {
                     width: 14, height: 14,
                     child: CircularProgressIndicator(
                         strokeWidth: 2, color: AppColors.primaryMid))
-                : const Icon(Icons.refresh,
-                    size: 16, color: AppColors.textMuted),
+                : const Icon(Icons.refresh, size: 16, color: AppColors.textMuted),
           ),
         ]),
       );
 }
-
-// ══════════════════════════════════════════════════════════════
-//  LÉGENDE
-// ══════════════════════════════════════════════════════════════
 
 class _Legend extends StatelessWidget {
   const _Legend();
@@ -493,62 +430,44 @@ class _Legend extends StatelessWidget {
         decoration: BoxDecoration(
           color:        Colors.white.withOpacity(0.95),
           borderRadius: BorderRadius.circular(10),
-          boxShadow: [
-            BoxShadow(
-              color:      Colors.black.withOpacity(0.08),
-              blurRadius: 8,
-            ),
-          ],
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 8)],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text('Légende',
-                style: TextStyle(
-                    fontSize:   11,
-                    fontWeight: FontWeight.w600,
-                    color:      AppColors.textSecondary)),
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
             const SizedBox(height: 6),
-            // Forêt
             Row(mainAxisSize: MainAxisSize.min, children: [
               Container(
                 width: 16, height: 16,
                 decoration: BoxDecoration(
                   color:  const Color(0x222E7D32),
-                  border: Border.all(
-                      color: const Color(0xFF2E7D32), width: 1.5),
+                  border: Border.all(color: const Color(0xFF2E7D32), width: 1.5),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
               const SizedBox(width: 8),
-              const Text('Forêt assignée',
-                  style: TextStyle(
-                      fontSize: 10, color: AppColors.textPrimary)),
+              const Text('Forêt assignée', style: TextStyle(fontSize: 10, color: AppColors.textPrimary)),
             ]),
             const SizedBox(height: 4),
-            // Parcelle
             Row(mainAxisSize: MainAxisSize.min, children: [
               Container(
                 width: 16, height: 16,
                 decoration: BoxDecoration(
                   color:  const Color(0x333B82F6),
-                  border: Border.all(
-                      color: const Color(0xFF2563EB), width: 1.5),
+                  border: Border.all(color: const Color(0xFF2563EB), width: 1.5),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
               const SizedBox(width: 8),
-              const Text('Parcelle',
-                  style: TextStyle(
-                      fontSize: 10, color: AppColors.textPrimary)),
+              const Text('Parcelle', style: TextStyle(fontSize: 10, color: AppColors.textPrimary)),
             ]),
             const SizedBox(height: 4),
-            _LegendTriangle(
-                color: const Color(0xFFD32F2F), label: 'Alerte en cours'),
+            _LegendTriangle(color: const Color(0xFFD32F2F), label: 'Alerte en cours'),
             const SizedBox(height: 4),
-            _LegendTriangle(
-                color: const Color(0xFF388E3C), label: 'Alerte traitée'),
+            _LegendTriangle(color: const Color(0xFF388E3C), label: 'Alerte traitée'),
           ],
         ),
       );
@@ -563,14 +482,9 @@ class _LegendTriangle extends StatelessWidget {
   Widget build(BuildContext context) => Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          CustomPaint(
-            size:    const Size(16, 16),
-            painter: _TrianglePainter(color: color),
-          ),
+          CustomPaint(size: const Size(16, 16), painter: _TrianglePainter(color: color)),
           const SizedBox(width: 8),
-          Text(label,
-              style: const TextStyle(
-                  fontSize: 10, color: AppColors.textPrimary)),
+          Text(label, style: const TextStyle(fontSize: 10, color: AppColors.textPrimary)),
         ],
       );
 }

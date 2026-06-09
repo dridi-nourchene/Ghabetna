@@ -1,4 +1,4 @@
-// features/alert/services/alert_map_service.dart
+// frontend/forest_app/lib/features/alert/services/alert_map_service.dart
 
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -18,14 +18,10 @@ class AlertMapService {
     };
   }
 
-  // ── Polling map ───────────────────────────────────────────
-  // Retourne les alertes non rejetées
-  // incident_lat/lng peuvent être null → sera géré côté Flutter
-  // en utilisant le centroïde de la forêt
-
+  // CORRECTION : URL corrigée → /supervisor/map (pas /map qui n'existe pas)
   Future<List<AlertMapPoint>> getMapPoints() async {
     final res = await http.get(
-      Uri.parse('$_base/api/alerts/map'),
+      Uri.parse('$_base/api/alerts/supervisor/map'),
       headers: await _authHeaders(),
     ).timeout(const Duration(seconds: 15));
 
@@ -36,8 +32,6 @@ class AlertMapService {
     }
     throw Exception('Erreur chargement alertes map (${res.statusCode})');
   }
-
-  // ── Détail alerte (popup) ─────────────────────────────────
 
   Future<AlertDetail> getAlertDetail(String alertId) async {
     final res = await http.get(
@@ -51,20 +45,19 @@ class AlertMapService {
     throw Exception('Alerte introuvable (${res.statusCode})');
   }
 
-  // ── Changer statut + commentaire ─────────────────────────
-
   Future<AlertDetail> updateAlertStatus({
     required String alertId,
     required String status,
-    String?         adminComment,
+    String?         supervisorComment, // CORRECTION : renommé adminComment → supervisorComment
   }) async {
     final res = await http.patch(
       Uri.parse('$_base/api/alerts/$alertId/status'),
       headers: await _authHeaders(),
       body: jsonEncode({
-        'status':        status,
-        if (adminComment != null && adminComment.isNotEmpty)
-          'admin_comment': adminComment,
+        'status': status,
+        // CORRECTION : clé corrigée admin_comment → supervisor_comment
+        if (supervisorComment != null && supervisorComment.isNotEmpty)
+          'supervisor_comment': supervisorComment,
       }),
     ).timeout(const Duration(seconds: 15));
 

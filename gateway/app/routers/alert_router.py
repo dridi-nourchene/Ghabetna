@@ -43,17 +43,17 @@ async def _get_supervisor_forest_ids(supervisor_id: str, auth_header: str) -> li
                 return []
             data = response.json()
             forests = data.get("items", [])
-            supervisor_id_lower = supervisor_id.lower()
-            return [
+            supervisor_id_lower = supervisor_id.strip().lower()
+            forest_ids = [
                 f["id"] for f in forests
-                if f.get("superviseur_id") and          # ← vérifier non-None
-                str(f["superviseur_id"]).lower() == supervisor_id_lower
+                if f.get("superviseur_id") and
+                str(f["superviseur_id"]).strip().lower() == supervisor_id_lower
             ]
-        print(f"[GATEWAY] supervisor={supervisor_id}, forests trouvées={forest_ids}")
+            print(f"[GATEWAY] supervisor={supervisor_id}, forests trouvées={forest_ids}")
+            return forest_ids   # ← déplacé ici, dans le bloc async with
     except Exception as e:
         print(f"[GATEWAY] Erreur _get_supervisor_forest_ids: {e}")
         return []
-
 
 async def _proxy_json(
     request: Request,
