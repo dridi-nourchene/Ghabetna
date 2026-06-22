@@ -113,7 +113,7 @@ services:
     ports:
       - "8003:8003"
     volumes:
-    - alert_uploads:/app/uploads
+      - alert_uploads:/app/uploads
     depends_on:
       alert_db:
         condition: service_healthy
@@ -179,7 +179,6 @@ volumes:
   alert_db_data:
   forest_db_data:
   alert_uploads:
-
 # ── NETWORK ────────────────────────────────────────────────
 
 networks:

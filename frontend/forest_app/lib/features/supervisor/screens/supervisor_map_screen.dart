@@ -140,7 +140,7 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
             PolygonLayer(polygons: forestPolygons),
           if (parcellePolygons.isNotEmpty)
             PolygonLayer(polygons: parcellePolygons),
-          qsaqMarkerLayer(markers: alertMarkers),
+            MarkerLayer(markers: alertMarkers),
           const RichAttributionWidget(attributions: [
             TextSourceAttribution('© CartoDB © OpenStreetMap'),
           ]),

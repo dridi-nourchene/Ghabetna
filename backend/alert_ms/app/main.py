@@ -5,7 +5,7 @@ from pathlib import Path
 
 from app.db.database import engine, Base
 from app.routers.alert_router import router as alert_router
-import app.models.alert  # noqa — enregistre le modèle
+import app.models.alert
 
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
@@ -23,15 +23,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Servir les images uploadées ───────────────────────────────
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
-
-# ── Router ────────────────────────────────────────────────────
+app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 app.include_router(alert_router)
 
 
 @app.on_event("startup")
 async def startup():
+    UPLOAD_DIR.mkdir(exist_ok=True)
+    (UPLOAD_DIR / "alerts").mkdir(exist_ok=True)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     print("[ALERT MS] Tables initialisées")
