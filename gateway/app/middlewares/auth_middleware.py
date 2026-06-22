@@ -22,6 +22,7 @@ async def auth_middleware(request: Request, call_next):
         "/docs",
         "/openapi.json",
         "/redoc",
+        "/uploads",
     ]
 
     if any(path.startswith(p) for p in PUBLIC_PATHS):

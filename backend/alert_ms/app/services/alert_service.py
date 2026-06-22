@@ -22,7 +22,8 @@ MAX_SIZE_MB   = 10
 def _image_url(image_path: Optional[str]) -> Optional[str]:
     if not image_path:
         return None
-    return f"/uploads/{image_path}"
+    base = settings.BASE_URL.rstrip("/")
+    return f"{base}/uploads/{image_path}"
 
 
 def _alert_to_dict(alert: Alert) -> dict:
