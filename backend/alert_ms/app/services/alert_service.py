@@ -1,4 +1,5 @@
 import uuid
+import httpx
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID
@@ -18,6 +19,9 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_SIZE_MB   = 10
 
+# URL du forest_ms (interne Docker)
+FOREST_MS_URL = "http://forest_ms:8002"
+
 
 def _image_url(image_path: Optional[str]) -> Optional[str]:
     if not image_path:
@@ -26,7 +30,94 @@ def _image_url(image_path: Optional[str]) -> Optional[str]:
     return f"{base}/uploads/{image_path}"
 
 
-def _alert_to_dict(alert: Alert) -> dict:
+# ── Récupérer les infos d'un agent depuis forest_ms (users_cache) ──
+
+async def _get_agent_info(agent_id: UUID) -> dict:
+    """
+    Appelle forest_ms pour récupérer les infos de l'agent (nom, phone)
+    depuis users_cache. Retourne un dict vide si indisponible.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            res = await client.get(
+                f"{FOREST_MS_URL}/internal/users/{agent_id}",
+            )
+            if res.status_code == 200:
+                return res.json()
+    except Exception as e:
+        print(f"[ALERT SVC] Erreur _get_agent_info({agent_id}): {e}")
+    return {}
+
+
+async def _get_agents_in_parcelle(parcelle_id: UUID) -> list[dict]:
+    """
+    Récupère les agents affectés à une parcelle précise (GPS exact disponible).
+    """
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            res = await client.get(
+                f"{FOREST_MS_URL}/internal/parcelles/{parcelle_id}/agents",
+            )
+            if res.status_code == 200:
+                return res.json()
+    except Exception as e:
+        print(f"[ALERT SVC] Erreur _get_agents_in_parcelle({parcelle_id}): {e}")
+    return []
+
+
+async def _get_agents_in_forest(forest_id: UUID) -> list[dict]:
+    """
+    Récupère tous les agents affectés aux parcelles d'une forêt entière.
+    Utilisé quand la localisation est approximative (forest_only / agent_gps).
+    """
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            res = await client.get(
+                f"{FOREST_MS_URL}/internal/forests/{forest_id}/agents",
+            )
+            if res.status_code == 200:
+                return res.json()
+    except Exception as e:
+        print(f"[ALERT SVC] Erreur _get_agents_in_forest({forest_id}): {e}")
+    return []
+
+
+async def _get_forest_name(forest_id: UUID) -> Optional[str]:
+    """Récupère le nom de la forêt depuis forest_ms."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            res = await client.get(
+                f"{FOREST_MS_URL}/internal/forests/{forest_id}/name",
+            )
+            if res.status_code == 200:
+                return res.json().get("name")
+    except Exception as e:
+        print(f"[ALERT SVC] Erreur _get_forest_name({forest_id}): {e}")
+    return None
+
+
+async def _alert_to_dict(alert: Alert) -> dict:
+    """
+    Construit le dict de réponse enrichi :
+    - agent_nom / agent_phone : infos de l'agent émetteur
+    - zone_agents : agents de la zone de l'incident
+    - location_label : nom de la forêt si localisation approximative
+    """
+    # Infos de l'agent émetteur
+    agent_info = await _get_agent_info(alert.agent_id)
+
+    # Agents de la zone + label de localisation
+    zone_agents: list[dict] = []
+    location_label: Optional[str] = None
+
+    if alert.location_source == LocationSource.forest_only or \
+       alert.location_source == LocationSource.agent_gps:
+        # Localisation approximative → tous les agents de la forêt
+        zone_agents = await _get_agents_in_forest(alert.forest_id)
+        location_label = await _get_forest_name(alert.forest_id)
+    # Pour LocationSource.exif (GPS précis), zone_agents reste vide
+    # car on a une position exacte et pas besoin de liste approximative
+
     return {
         "id":                 str(alert.id),
         "type":               alert.type,
@@ -37,9 +128,16 @@ def _alert_to_dict(alert: Alert) -> dict:
         "agent_lat":          alert.agent_lat,
         "agent_lng":          alert.agent_lng,
         "location_source":    alert.location_source,
+        # Nom de la forêt quand localisation approximative (remplace "Position approx.")
+        "location_label":     location_label,
         "image_url":          _image_url(alert.image_path),
         "agent_id":           str(alert.agent_id),
         "forest_id":          str(alert.forest_id),
+        # Infos agent émetteur
+        "agent_nom":          agent_info.get("nom"),
+        "agent_phone":        agent_info.get("phone"),
+        # Agents présents dans la zone de l'incident
+        "zone_agents":        zone_agents,
         "supervisor_comment": alert.supervisor_comment,
         "supervisor_id":      str(alert.supervisor_id) if alert.supervisor_id else None,
         "commented_at":       alert.commented_at.isoformat() if alert.commented_at else None,
@@ -106,7 +204,7 @@ async def create_alert(
     db.add(alert)
     await db.commit()
     await db.refresh(alert)
-    return _alert_to_dict(alert)
+    return await _alert_to_dict(alert)
 
 
 # ── GET AGENT ALERTS ──────────────────────────────────────────
@@ -117,10 +215,13 @@ async def get_agent_alerts(db: AsyncSession, agent_id: UUID) -> list[dict]:
         .where(Alert.agent_id == agent_id)
         .order_by(Alert.created_at.desc())
     )
-    return [_alert_to_dict(a) for a in result.scalars().all()]
+    results = []
+    for a in result.scalars().all():
+        results.append(await _alert_to_dict(a))
+    return results
 
 
-# ── GET SUPERVISOR ALERTS (forêts assignées) ──────────────────
+# ── GET SUPERVISOR ALERTS ─────────────────────────────────────
 
 async def get_supervisor_alerts(
     db:            AsyncSession,
@@ -128,10 +229,6 @@ async def get_supervisor_alerts(
     forest_ids:    list[UUID],
     status:        Optional[AlertStatus] = None,
 ) -> list[dict]:
-    """
-    Retourne les alertes uniquement pour les forêts assignées au superviseur.
-    forest_ids est résolu côté gateway depuis forest_service.
-    """
     if not forest_ids:
         return []
 
@@ -144,7 +241,10 @@ async def get_supervisor_alerts(
         query = query.where(Alert.status == status)
 
     result = await db.execute(query)
-    return [_alert_to_dict(a) for a in result.scalars().all()]
+    results = []
+    for a in result.scalars().all():
+        results.append(await _alert_to_dict(a))
+    return results
 
 
 # ── GET MAP POINTS (supervisor) ───────────────────────────────
@@ -164,29 +264,7 @@ async def get_supervisor_map_points(
         )
         .order_by(Alert.created_at.desc())
     )
-    return [
-        {
-            "id":              str(a.id),
-            "type":            a.type,
-            "status":          a.status,
-            "incident_lat":    a.incident_lat,
-            "incident_lng":    a.incident_lng,
-            "location_source": a.location_source,
-            "forest_id":       str(a.forest_id),
-            "created_at":      a.created_at.isoformat(),
-        }
-        for a in result.scalars().all()
-    ]
-
-
-# ── MAP POINTS (admin — toutes alertes) ───────────────────────
-
-async def get_map_points(db: AsyncSession) -> list[dict]:
-    result = await db.execute(
-        select(Alert)
-        .where(Alert.status != AlertStatus.rejeter)
-        .order_by(Alert.created_at.desc())
-    )
+    # Map points restent légers (pas d'enrichissement)
     return [
         {
             "id":              str(a.id),
@@ -209,24 +287,23 @@ async def get_alert_by_id(db: AsyncSession, alert_id: UUID) -> dict:
     alert  = result.scalar_one_or_none()
     if not alert:
         raise HTTPException(status_code=404, detail="Alerte introuvable")
-    return _alert_to_dict(alert)
+    return await _alert_to_dict(alert)
 
 
-# ── UPDATE STATUS (superviseur) ───────────────────────────────
+# ── UPDATE STATUS ─────────────────────────────────────────────
 
 async def update_alert_status(
     db:            AsyncSession,
     alert_id:      UUID,
     data:          AlertStatusUpdate,
     supervisor_id: UUID,
-    forest_ids:    list[UUID],  # forêts assignées au superviseur
+    forest_ids:    list[UUID],
 ) -> dict:
     result = await db.execute(select(Alert).where(Alert.id == alert_id))
     alert  = result.scalar_one_or_none()
     if not alert:
         raise HTTPException(status_code=404, detail="Alerte introuvable")
 
-    # Vérifier que l'alerte appartient à une forêt du superviseur
     if alert.forest_id not in forest_ids:
         raise HTTPException(
             status_code=403,
@@ -241,4 +318,4 @@ async def update_alert_status(
 
     await db.commit()
     result2 = await db.execute(select(Alert).where(Alert.id == alert_id))
-    return _alert_to_dict(result2.scalar_one())
+    return await _alert_to_dict(result2.scalar_one())
