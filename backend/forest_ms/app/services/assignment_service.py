@@ -12,6 +12,12 @@ from app.models.parcelle import Parcelle
 from app.models.user_cahe import UserCache
 from app.models.agent_parcelle import AgentParcelle
 
+from app.core.streams import (
+    STREAM_AGENT_ASSIGNED,
+    STREAM_AGENT_REASSIGNED,
+    STREAM_AGENT_REMOVED,
+)
+from app.core.redis_client import get_redis
 
 # ────────────────────────────────────────────────────────────
 # HELPERS
@@ -163,7 +169,20 @@ async def assign_agent(
     # Commit
     db.add(AgentParcelle(agent_id=agent_id, parcelle_id=parcelle_id))
     await db.commit()
-
+    try:
+            redis = await get_redis()
+            await redis.xadd(
+                STREAM_AGENT_ASSIGNED,
+                {
+                    "agent_id":    str(agent_id),
+                    "parcelle_id": str(parcelle_id),
+                    "forest_id":   str(parcelle.forest_id),
+                    "agent_nom":   agent_nom,
+                    "agent_phone": agent_phone or "",
+                }
+            )
+    except Exception as e:
+            print(f"[STREAM] Erreur publish agent.assigned : {e}")
     # Retourner avec les données déjà collectées — pas de query après commit
     return {
         "conflict":      False,
@@ -201,6 +220,21 @@ async def reassign_agent(
 
     await db.commit()
 
+    try:
+        redis = await get_redis()
+        await redis.xadd(
+            STREAM_AGENT_REASSIGNED,
+            {
+                "agent_id":    str(agent_id),
+                "parcelle_id": str(parcelle_id),
+                "forest_id":   str(parcelle.forest_id),
+                "agent_nom":   agent_nom,
+                "agent_phone": agent_phone or "",
+            }
+        )
+    except Exception as e:
+        print(f"[STREAM] Erreur publish agent.reassigned : {e}")
+
     return {
         "conflict":      False,
         "agent_id":      str(agent_id),
@@ -221,8 +255,28 @@ async def remove_agent(db: AsyncSession, agent_id: UUID) -> dict:
     if not assignment:
         raise HTTPException(status_code=404, detail="Affectation introuvable")
 
+    parcelle_id = assignment.parcelle_id
+    
+    # récupérer forest_id
+    parcelle = await _get_parcelle(db, parcelle_id)
+
     await db.delete(assignment)
     await db.commit()
+
+    # publier après commit
+    try:
+        redis = await get_redis()
+        await redis.xadd(
+            STREAM_AGENT_REMOVED,
+            {
+                "agent_id":    str(agent_id),
+                "parcelle_id": str(parcelle_id),
+                "forest_id":   str(parcelle.forest_id),
+            }
+        )
+    except Exception as e:
+        print(f"[STREAM] Erreur publish agent.removed : {e}")
+
     return {"message": "Agent retiré avec succès"}
 
 

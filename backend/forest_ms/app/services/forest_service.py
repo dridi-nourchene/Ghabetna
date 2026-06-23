@@ -16,6 +16,8 @@ from app.schemas.forest import (
     ForestFeature, ForestsGeoJSONCollection,
 )
 
+from app.core.streams import STREAM_FOREST_DELETED
+from app.core.redis_client import get_redis
 
 # ── Convertisseurs GeoJSON ↔ WKB ─────────────────────────
 
@@ -245,7 +247,16 @@ async def delete_forest(db: AsyncSession, forest_id: UUID) -> None:
     if not forest:
         raise HTTPException(status_code=404, detail="Forêt introuvable")
     await db.delete(forest)
-    await db.commit()  
+    await db.commit()
+    # publier après commit
+    try:
+        redis = await get_redis()
+        await redis.xadd(
+            STREAM_FOREST_DELETED,
+            {"forest_id": str(forest_id)}
+        )
+    except Exception as e:
+        print(f"[STREAM] Erreur publish forest.deleted : {e}") 
 
 
 # ── GeoJSON FeatureCollection ─────────────────────────────

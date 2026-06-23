@@ -17,6 +17,8 @@ from app.schemas.parcelle import (
     ParcelleFeature, ParcellesGeoJSONCollection,
 )
 
+from app.core.streams import STREAM_PARCELLE_DELETED
+from app.core.redis_client import get_redis
 
 # ── Convertisseurs ────────────────────────────────────────
 

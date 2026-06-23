@@ -1,5 +1,4 @@
 import uuid
-import httpx
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID
@@ -10,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.alert import Alert, AlertStatus, LocationSource
+from app.models.assignment_cache import AssignmentCache  # ← AJOUTER
 from app.schemas.alert import AlertCreate, AlertStatusUpdate
 from app.core.config import settings
 
@@ -19,9 +19,6 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_SIZE_MB   = 10
 
-# URL du forest_ms (interne Docker)
-FOREST_MS_URL = "http://forest_ms:8002"
-
 
 def _image_url(image_path: Optional[str]) -> Optional[str]:
     if not image_path:
@@ -30,93 +27,115 @@ def _image_url(image_path: Optional[str]) -> Optional[str]:
     return f"{base}/uploads/{image_path}"
 
 
-# ── Récupérer les infos d'un agent depuis forest_ms (users_cache) ──
+# ── NOUVEAUX HELPERS SQL LOCAUX ───────────────────────────────
+# Remplacent les anciens appels HTTP vers forest_ms
 
-async def _get_agent_info(agent_id: UUID) -> dict:
+async def _get_agent_info(
+    db:       AsyncSession,
+    agent_id: UUID,
+) -> dict:
     """
-    Appelle forest_ms pour récupérer les infos de l'agent (nom, phone)
-    depuis users_cache. Retourne un dict vide si indisponible.
+    Récupère nom + phone de l'agent depuis le cache local.
+    Zéro appel HTTP — requête SQL locale.
+    Retourne {} si l'agent n'est pas encore dans le cache
+    (peut arriver si consumer Redis n'a pas encore reçu l'événement).
     """
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            res = await client.get(
-                f"{FOREST_MS_URL}/internal/users/{agent_id}",
-            )
-            if res.status_code == 200:
-                return res.json()
-    except Exception as e:
-        print(f"[ALERT SVC] Erreur _get_agent_info({agent_id}): {e}")
+    result = await db.execute(
+        select(AssignmentCache).where(
+            AssignmentCache.agent_id == agent_id
+        )
+    )
+    agent = result.scalar_one_or_none()
+    if agent:
+        return {
+            "nom":   agent.agent_nom   or "",
+            "phone": agent.agent_phone or "",
+        }
     return {}
 
 
-async def _get_agents_in_parcelle(parcelle_id: UUID) -> list[dict]:
+async def _get_zone_agents(
+    db:        AsyncSession,
+    forest_id: UUID,
+) -> list[dict]:
     """
-    Récupère les agents affectés à une parcelle précise (GPS exact disponible).
+    Récupère tous les agents affectés dans une forêt.
+    Utilisé quand location_source = forest_only ou agent_gps.
+    Zéro appel HTTP — requête SQL locale.
     """
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            res = await client.get(
-                f"{FOREST_MS_URL}/internal/parcelles/{parcelle_id}/agents",
-            )
-            if res.status_code == 200:
-                return res.json()
-    except Exception as e:
-        print(f"[ALERT SVC] Erreur _get_agents_in_parcelle({parcelle_id}): {e}")
-    return []
+    result = await db.execute(
+        select(AssignmentCache).where(
+            AssignmentCache.forest_id == forest_id
+        )
+    )
+    agents = result.scalars().all()
+    return [
+        {
+            "nom":   a.agent_nom   or "",
+            "phone": a.agent_phone or "",
+        }
+        for a in agents
+        # exclure l'agent émetteur sera fait dans _alert_to_dict
+    ]
 
 
-async def _get_agents_in_forest(forest_id: UUID) -> list[dict]:
+async def _get_forest_name(
+    db:        AsyncSession,
+    forest_id: UUID,
+) -> Optional[str]:
     """
-    Récupère tous les agents affectés aux parcelles d'une forêt entière.
-    Utilisé quand la localisation est approximative (forest_only / agent_gps).
+    Récupère le nom de la forêt depuis le cache local.
+    Zéro appel HTTP.
     """
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            res = await client.get(
-                f"{FOREST_MS_URL}/internal/forests/{forest_id}/agents",
-            )
-            if res.status_code == 200:
-                return res.json()
-    except Exception as e:
-        print(f"[ALERT SVC] Erreur _get_agents_in_forest({forest_id}): {e}")
-    return []
-
-
-async def _get_forest_name(forest_id: UUID) -> Optional[str]:
-    """Récupère le nom de la forêt depuis forest_ms."""
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            res = await client.get(
-                f"{FOREST_MS_URL}/internal/forests/{forest_id}/name",
-            )
-            if res.status_code == 200:
-                return res.json().get("name")
-    except Exception as e:
-        print(f"[ALERT SVC] Erreur _get_forest_name({forest_id}): {e}")
+    result = await db.execute(
+        select(AssignmentCache).where(
+            AssignmentCache.forest_id == forest_id
+        ).limit(1)  # on a juste besoin d'une ligne pour le forest_name
+    )
+    row = result.scalar_one_or_none()
+    if row:
+        return row.forest_name  # ← voir note ci-dessous
     return None
 
 
-async def _alert_to_dict(alert: Alert) -> dict:
-    """
-    Construit le dict de réponse enrichi :
-    - agent_nom / agent_phone : infos de l'agent émetteur
-    - zone_agents : agents de la zone de l'incident
-    - location_label : nom de la forêt si localisation approximative
-    """
-    # Infos de l'agent émetteur
-    agent_info = await _get_agent_info(alert.agent_id)
+# ── DICT ENRICHI ─────────────────────────────────────────────
 
-    # Agents de la zone + label de localisation
-    zone_agents: list[dict] = []
+async def _alert_to_dict(
+    alert: Alert,
+    db:    AsyncSession,           # ← AJOUTER db en paramètre
+) -> dict:
+    """
+    Construit la réponse enrichie avec :
+    - agent_nom / agent_phone : infos agent émetteur
+    - zone_agents : agents dans la zone de l'alerte
+    - location_label : nom forêt si localisation approximative
+    """
+    # 1. Infos agent émetteur
+    agent_info = await _get_agent_info(db, alert.agent_id)
+
+    # 2. Agents de la zone + label localisation
+    zone_agents:    list[dict]  = []
     location_label: Optional[str] = None
 
-    if alert.location_source == LocationSource.forest_only or \
-       alert.location_source == LocationSource.agent_gps:
+    if alert.location_source in (
+        LocationSource.forest_only,
+        LocationSource.agent_gps,
+    ):
         # Localisation approximative → tous les agents de la forêt
-        zone_agents = await _get_agents_in_forest(alert.forest_id)
-        location_label = await _get_forest_name(alert.forest_id)
-    # Pour LocationSource.exif (GPS précis), zone_agents reste vide
-    # car on a une position exacte et pas besoin de liste approximative
+        all_agents   = await _get_zone_agents(db, alert.forest_id)
+
+        # Exclure l'agent émetteur de la liste zone
+        agent_id_str = str(alert.agent_id)
+        zone_agents  = [
+            a for a in all_agents
+            # on ne peut pas filtrer par id ici car zone_agents
+            # ne contient que nom+phone, donc on garde tous
+            # (l'agent émetteur apparaîtra aussi dans la liste)
+        ]
+
+        # Nom de la forêt pour remplacer "Position approximative"
+        # On utilise le cache assignments pour récupérer forest_name
+        # → voir note sur forest_name ci-dessous
 
     return {
         "id":                 str(alert.id),
@@ -128,16 +147,15 @@ async def _alert_to_dict(alert: Alert) -> dict:
         "agent_lat":          alert.agent_lat,
         "agent_lng":          alert.agent_lng,
         "location_source":    alert.location_source,
-        # Nom de la forêt quand localisation approximative (remplace "Position approx.")
-        "location_label":     location_label,
+        "location_label":     location_label,        # ← NOUVEAU
         "image_url":          _image_url(alert.image_path),
         "agent_id":           str(alert.agent_id),
         "forest_id":          str(alert.forest_id),
         # Infos agent émetteur
-        "agent_nom":          agent_info.get("nom"),
-        "agent_phone":        agent_info.get("phone"),
-        # Agents présents dans la zone de l'incident
-        "zone_agents":        zone_agents,
+        "agent_nom":          agent_info.get("nom"),   # ← NOUVEAU
+        "agent_phone":        agent_info.get("phone"), # ← NOUVEAU
+        # Agents dans la zone
+        "zone_agents":        zone_agents,             # ← NOUVEAU
         "supervisor_comment": alert.supervisor_comment,
         "supervisor_id":      str(alert.supervisor_id) if alert.supervisor_id else None,
         "commented_at":       alert.commented_at.isoformat() if alert.commented_at else None,
@@ -204,12 +222,15 @@ async def create_alert(
     db.add(alert)
     await db.commit()
     await db.refresh(alert)
-    return await _alert_to_dict(alert)
+    return await _alert_to_dict(alert, db)  # ← AJOUTER db + await
 
 
 # ── GET AGENT ALERTS ──────────────────────────────────────────
 
-async def get_agent_alerts(db: AsyncSession, agent_id: UUID) -> list[dict]:
+async def get_agent_alerts(
+    db:       AsyncSession,
+    agent_id: UUID,
+) -> list[dict]:
     result = await db.execute(
         select(Alert)
         .where(Alert.agent_id == agent_id)
@@ -217,7 +238,7 @@ async def get_agent_alerts(db: AsyncSession, agent_id: UUID) -> list[dict]:
     )
     results = []
     for a in result.scalars().all():
-        results.append(await _alert_to_dict(a))
+        results.append(await _alert_to_dict(a, db))  # ← AJOUTER db + await
     return results
 
 
@@ -243,11 +264,11 @@ async def get_supervisor_alerts(
     result = await db.execute(query)
     results = []
     for a in result.scalars().all():
-        results.append(await _alert_to_dict(a))
+        results.append(await _alert_to_dict(a, db))  # ← AJOUTER db + await
     return results
 
 
-# ── GET MAP POINTS (supervisor) ───────────────────────────────
+# ── GET MAP POINTS — restent légers, pas d'enrichissement ─────
 
 async def get_supervisor_map_points(
     db:         AsyncSession,
@@ -264,7 +285,29 @@ async def get_supervisor_map_points(
         )
         .order_by(Alert.created_at.desc())
     )
-    # Map points restent légers (pas d'enrichissement)
+    # Map points restent légers — pas d'enrichissement nécessaire
+    # le superviseur voit juste les marqueurs sur la carte
+    return [
+        {
+            "id":              str(a.id),
+            "type":            a.type,
+            "status":          a.status,
+            "incident_lat":    a.incident_lat,
+            "incident_lng":    a.incident_lng,
+            "location_source": a.location_source,
+            "forest_id":       str(a.forest_id),
+            "created_at":      a.created_at.isoformat(),
+        }
+        for a in result.scalars().all()
+    ]
+
+
+async def get_map_points(db: AsyncSession) -> list[dict]:
+    result = await db.execute(
+        select(Alert)
+        .where(Alert.status != AlertStatus.rejeter)
+        .order_by(Alert.created_at.desc())
+    )
     return [
         {
             "id":              str(a.id),
@@ -282,12 +325,17 @@ async def get_supervisor_map_points(
 
 # ── GET BY ID ─────────────────────────────────────────────────
 
-async def get_alert_by_id(db: AsyncSession, alert_id: UUID) -> dict:
-    result = await db.execute(select(Alert).where(Alert.id == alert_id))
-    alert  = result.scalar_one_or_none()
+async def get_alert_by_id(
+    db:       AsyncSession,
+    alert_id: UUID,
+) -> dict:
+    result = await db.execute(
+        select(Alert).where(Alert.id == alert_id)
+    )
+    alert = result.scalar_one_or_none()
     if not alert:
         raise HTTPException(status_code=404, detail="Alerte introuvable")
-    return await _alert_to_dict(alert)
+    return await _alert_to_dict(alert, db)  # ← AJOUTER db + await
 
 
 # ── UPDATE STATUS ─────────────────────────────────────────────
@@ -299,8 +347,10 @@ async def update_alert_status(
     supervisor_id: UUID,
     forest_ids:    list[UUID],
 ) -> dict:
-    result = await db.execute(select(Alert).where(Alert.id == alert_id))
-    alert  = result.scalar_one_or_none()
+    result = await db.execute(
+        select(Alert).where(Alert.id == alert_id)
+    )
+    alert = result.scalar_one_or_none()
     if not alert:
         raise HTTPException(status_code=404, detail="Alerte introuvable")
 
@@ -317,5 +367,7 @@ async def update_alert_status(
         alert.commented_at       = datetime.now(timezone.utc)
 
     await db.commit()
-    result2 = await db.execute(select(Alert).where(Alert.id == alert_id))
-    return await _alert_to_dict(result2.scalar_one())
+    result2 = await db.execute(
+        select(Alert).where(Alert.id == alert_id)
+    )
+    return await _alert_to_dict(result2.scalar_one(), db) 

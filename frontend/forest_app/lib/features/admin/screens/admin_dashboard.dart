@@ -55,6 +55,18 @@ class _StatsRow extends StatelessWidget {
       return Row(
         children: [
           // Card verte (primary)
+          
+          Expanded(
+            flex: 10,
+            child: _StatCard.white(
+              label: 'Comptes en attente',
+              value: '8',
+              sub: 'À activer par email',
+              subColor: AppColors.warning,
+              onTap: () => context.go('/admin/users'),
+            ),
+          ),
+          const SizedBox(width: 10),
           Expanded(
             flex: 12,
             child: _StatCard.primary(
@@ -70,7 +82,7 @@ class _StatsRow extends StatelessWidget {
             child: _StatCard.white(
               label: 'Forêts gérées',
               value: '12',
-              sub: '8 wilayas couvertes',
+              sub: ' ',
               subColor: AppColors.textMuted,
               onTap: () => context.go('/admin/forests'),
             ),
@@ -79,22 +91,11 @@ class _StatsRow extends StatelessWidget {
           Expanded(
             flex: 10,
             child: _StatCard.white(
-              label: 'Alertes actives',
+              label: 'Parcelles gérées',
               value: '5',
-              sub: '3 incendies · 2 intrusions',
+              sub: ' ',
               subColor: AppColors.danger,
-              onTap: () => context.go('/admin/alerts'),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            flex: 10,
-            child: _StatCard.white(
-              label: 'Comptes en attente',
-              value: '8',
-              sub: 'À activer par email',
-              subColor: AppColors.warning,
-              onTap: () => context.go('/admin/users'),
+              onTap: () => context.go('/admin/parcels'),
             ),
           ),
         ],
