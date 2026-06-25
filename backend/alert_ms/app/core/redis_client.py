@@ -17,4 +17,4 @@ async def close_redis() -> None:
     global _redis_client
     if _redis_client:
         await _redis_client.aclose()
-        _redis_client = None
+        _redis_client = None                 

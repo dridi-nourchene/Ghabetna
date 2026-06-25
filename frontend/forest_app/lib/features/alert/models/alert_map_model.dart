@@ -64,8 +64,27 @@ enum LocationSource {
           orElse: () => LocationSource.forest_only);
 }
 
+// ── Agent info ────────────────────────────────────────────
 
-// ── Map point (léger) ─────────────────────────────────────────
+class AgentInfo {
+  final String userId;
+  final String nom;
+  final String phone;
+
+  const AgentInfo({
+    required this.userId,
+    required this.nom,
+    required this.phone,
+  });
+
+  factory AgentInfo.fromJson(Map<String, dynamic> j) => AgentInfo(
+    userId: j['user_id'] ?? '',
+    nom:    j['nom'] ?? 'Inconnu',
+    phone:  j['phone'] ?? '',
+  );
+}
+
+// ── Map point (léger) ─────────────────────────────────────
 
 class AlertMapPoint {
   final String         id;
@@ -103,8 +122,7 @@ class AlertMapPoint {
   );
 }
 
-
-// ── Détail complet ────────────────────────────────────────────
+// ── Détail complet ────────────────────────────────────────
 
 class AlertDetail {
   final String         id;
@@ -116,9 +134,12 @@ class AlertDetail {
   final double?        agentLat;
   final double?        agentLng;
   final LocationSource locationSource;
+  final String?        locationLabel;           // Forêt: NOM
   final String?        imageUrl;
   final String         agentId;
   final String         forestId;
+  final AgentInfo?     emittingAgent;           // agent qui a envoyé
+  final List<AgentInfo> zoneAgents;             // agents de la forêt
   final String?        supervisorComment;
   final String?        supervisorId;
   final DateTime?      commentedAt;
@@ -135,9 +156,12 @@ class AlertDetail {
     this.agentLat,
     this.agentLng,
     required this.locationSource,
+    this.locationLabel,
     this.imageUrl,
     required this.agentId,
     required this.forestId,
+    this.emittingAgent,
+    this.zoneAgents = const [],
     this.supervisorComment,
     this.supervisorId,
     this.commentedAt,
@@ -156,18 +180,25 @@ class AlertDetail {
   }
 
   factory AlertDetail.fromJson(Map<String, dynamic> j) => AlertDetail(
-    id:                j['id'] as String,
-    type:              AlertType.fromString(j['type'] as String),
-    status:            AlertStatus.fromString(j['status'] as String),
-    description:       j['description'] as String?,
-    incidentLat:       (j['incident_lat'] as num?)?.toDouble(),
-    incidentLng:       (j['incident_lng'] as num?)?.toDouble(),
-    agentLat:          (j['agent_lat'] as num?)?.toDouble(),
-    agentLng:          (j['agent_lng'] as num?)?.toDouble(),
-    locationSource:    LocationSource.fromString(j['location_source'] as String),
-    imageUrl:          j['image_url'] as String?,
-    agentId:           j['agent_id'] as String,
-    forestId:          j['forest_id'] as String,
+    id:              j['id'] as String,
+    type:            AlertType.fromString(j['type'] as String),
+    status:          AlertStatus.fromString(j['status'] as String),
+    description:     j['description'] as String?,
+    incidentLat:     (j['incident_lat'] as num?)?.toDouble(),
+    incidentLng:     (j['incident_lng'] as num?)?.toDouble(),
+    agentLat:        (j['agent_lat'] as num?)?.toDouble(),
+    agentLng:        (j['agent_lng'] as num?)?.toDouble(),
+    locationSource:  LocationSource.fromString(j['location_source'] as String),
+    locationLabel:   j['location_label'] as String?,  
+    imageUrl:        j['image_url'] as String?,
+    agentId:         j['agent_id'] as String,
+    forestId:        j['forest_id'] as String,
+    emittingAgent:   j['emitting_agent'] != null       
+        ? AgentInfo.fromJson(j['emitting_agent'])
+        : null,
+    zoneAgents:      (j['zone_agents'] as List? ?? [])  
+        .map((a) => AgentInfo.fromJson(a))
+        .toList(),
     supervisorComment: j['supervisor_comment'] as String?,
     supervisorId:      j['supervisor_id'] as String?,
     commentedAt:       j['commented_at'] != null

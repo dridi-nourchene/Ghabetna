@@ -55,20 +55,26 @@ async def _handle_assigned(
     cached = result.scalar_one_or_none()
 
     if cached:
-        cached.parcelle_id = parcelle_id
-        cached.forest_id   = forest_id
-        cached.agent_nom   = data.get("agent_nom")
-        cached.agent_phone = data.get("agent_phone")
+        cached.parcelle_id  = parcelle_id
+        cached.forest_id    = forest_id
+        cached.agent_nom    = data.get("agent_nom")
+        cached.agent_phone  = data.get("agent_phone")
+        cached.forest_name  = data.get("forest_name")        # ← NOUVEAU
+        cached.parcelle_name = data.get("parcelle_name")     # ← NOUVEAU
     else:
         session.add(AssignmentCache(
-            agent_id    = agent_id,
-            parcelle_id = parcelle_id,
-            forest_id   = forest_id,
-            agent_nom   = data.get("agent_nom"),
-            agent_phone = data.get("agent_phone"),
+            agent_id     = agent_id,
+            parcelle_id  = parcelle_id,
+            forest_id    = forest_id,
+            agent_nom    = data.get("agent_nom"),
+            agent_phone  = data.get("agent_phone"),
+            forest_name  = data.get("forest_name"),          # ← NOUVEAU
+            parcelle_name = data.get("parcelle_name"),       # ← NOUVEAU
         ))
-    logger.info(f"[CONSUMER] Agent assigné : {data.get('agent_nom')}")
-
+    logger.info(
+        f"[CONSUMER] Agent assigné : {data.get('agent_nom')} "
+        f"@ {data.get('parcelle_name')}"
+    )
 
 async def _handle_reassigned(
     data: dict,

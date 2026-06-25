@@ -18,6 +18,7 @@ def upgrade() -> None:
         sa.Column("forest_id",   sa.UUID(), nullable=False),
         sa.Column("agent_nom",   sa.String(255), nullable=True),
         sa.Column("agent_phone", sa.String(30),  nullable=True),
+        sa.Column("forest_name", sa.String(255), nullable=True),
         sa.Column("synced_at",   sa.DateTime(timezone=True),
                   server_default=sa.text("now()"), nullable=True),
         sa.PrimaryKeyConstraint("agent_id"),

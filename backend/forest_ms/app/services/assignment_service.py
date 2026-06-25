@@ -61,7 +61,11 @@ async def _get_forest(db: AsyncSession, forest_id: UUID) -> Forest:
 
 
 async def _get_parcelle(db: AsyncSession, parcelle_id: UUID) -> Parcelle:
-    result = await db.execute(select(Parcelle).where(Parcelle.id == parcelle_id))
+    result = await db.execute(
+        select(Parcelle)
+        .where(Parcelle.id == parcelle_id)
+        .options(selectinload(Parcelle.forest))  
+    )
     parcelle = result.scalar_one_or_none()
     if not parcelle:
         raise HTTPException(status_code=404, detail="Parcelle introuvable")
@@ -170,20 +174,22 @@ async def assign_agent(
     db.add(AgentParcelle(agent_id=agent_id, parcelle_id=parcelle_id))
     await db.commit()
     try:
-            redis = await get_redis()
-            await redis.xadd(
-                STREAM_AGENT_ASSIGNED,
-                {
-                    "agent_id":    str(agent_id),
-                    "parcelle_id": str(parcelle_id),
-                    "forest_id":   str(parcelle.forest_id),
-                    "agent_nom":   agent_nom,
-                    "agent_phone": agent_phone or "",
-                }
-            )
+        redis = await get_redis()
+        await redis.xadd(
+            STREAM_AGENT_ASSIGNED,
+            {
+                "agent_id":     str(agent_id),
+                "parcelle_id":  str(parcelle_id),
+                "forest_id":    str(parcelle.forest_id),
+                "agent_nom":    agent_nom,
+                "agent_phone":  agent_phone or "",
+                "forest_name":  parcelle.forest.name,        
+                "parcelle_name": parcelle.name,             
+            }
+        )
     except Exception as e:
-            print(f"[STREAM] Erreur publish agent.assigned : {e}")
-    # Retourner avec les données déjà collectées — pas de query après commit
+        print(f"[STREAM] Erreur publish agent.assigned : {e}")
+    
     return {
         "conflict":      False,
         "agent_id":      str(agent_id),
@@ -225,11 +231,13 @@ async def reassign_agent(
         await redis.xadd(
             STREAM_AGENT_REASSIGNED,
             {
-                "agent_id":    str(agent_id),
-                "parcelle_id": str(parcelle_id),
-                "forest_id":   str(parcelle.forest_id),
-                "agent_nom":   agent_nom,
-                "agent_phone": agent_phone or "",
+                "agent_id":      str(agent_id),
+                "parcelle_id":   str(parcelle_id),
+                "forest_id":     str(parcelle.forest_id),
+                "agent_nom":     agent_nom,
+                "agent_phone":   agent_phone or "",
+                "forest_name":   parcelle.forest.name,        
+                "parcelle_name": parcelle.name,               
             }
         )
     except Exception as e:
@@ -259,19 +267,25 @@ async def remove_agent(db: AsyncSession, agent_id: UUID) -> dict:
     
     # récupérer forest_id
     parcelle = await _get_parcelle(db, parcelle_id)
-
+    
     await db.delete(assignment)
     await db.commit()
 
     # publier après commit
     try:
         redis = await get_redis()
+        parcelle_with_forest = await db.execute(
+        select(Parcelle).options(selectinload(Parcelle.forest)).where(Parcelle.id == parcelle_id))
+        parcelle_obj = parcelle_with_forest.scalar_one_or_none()
+        forest_name = parcelle_obj.forest.name if parcelle_obj and parcelle_obj.forest else ""
+
         await redis.xadd(
             STREAM_AGENT_REMOVED,
             {
                 "agent_id":    str(agent_id),
                 "parcelle_id": str(parcelle_id),
                 "forest_id":   str(parcelle.forest_id),
+                
             }
         )
     except Exception as e:

@@ -5,6 +5,7 @@ from datetime import datetime
 from app.models.alert import AlertType, AlertStatus, LocationSource
 
 
+
 class AlertCreate(BaseModel):
     type:        AlertType
     description: Optional[str] = None
@@ -21,6 +22,14 @@ class AlertStatusUpdate(BaseModel):
     status:             AlertStatus
     supervisor_comment: Optional[str] = None
 
+class ZoneAgent(BaseModel):
+    """Représente un agent dans la zone de l'alerte"""
+    nom: str
+    phone: str
+    parcelle_name: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
 
 class AlertResponse(BaseModel):
     id:             UUID
