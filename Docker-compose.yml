@@ -109,7 +109,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://alert_user:alert_pass@alert_db:5432/alert_db
       REDIS_URL: redis://redis:6379
-      BASE_URL: http://192.168.1.12:8000
+      BASE_URL: http://192.168.1.74:8000
     ports:
       - "8003:8003"
     volumes:

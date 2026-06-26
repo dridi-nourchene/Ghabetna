@@ -178,26 +178,25 @@ async def _alert_to_dict(
         alert.forest_id,
         exclude_parcelle_id=exclude_parcelle
     )
-
     return {
         "id":                 str(alert.id),
-        "type":               alert.type.value,              # ← STRING (.value)
-        "status":             alert.status.value,            # ← STRING (.value)
+        "agent_id":           str(alert.agent_id),    
+        "forest_id":          str(alert.forest_id),   
+        "type":               alert.type.value,
+        "status":             alert.status.value,
         "description":        alert.description,
-        
-        # Agent émetteur
         "agent_nom":          agent_info.get("nom"),
         "agent_phone":        agent_info.get("phone"),
-        
-        # Forêt (si approximatif)
         "forest_name":        forest_name,
-        
-        # Agents dans la zone
         "zone_agents":        zone_agents,
-        
         "location_source":    alert.location_source.value,
+        "incident_lat":       alert.incident_lat,     
+        "incident_lng":       alert.incident_lng,  
+        "agent_lat":          alert.agent_lat,        
+        "agent_lng":          alert.agent_lng,        
         "image_url":          _image_url(alert.image_path),
         "supervisor_comment": alert.supervisor_comment,
+        "supervisor_id":      str(alert.supervisor_id) if alert.supervisor_id else None,  
         "commented_at":       alert.commented_at.isoformat() if alert.commented_at else None,
         "created_at":         alert.created_at.isoformat(),
         "updated_at":         alert.updated_at.isoformat() if alert.updated_at else None,

@@ -7,7 +7,6 @@ import '../../../features/alert/providers/alert_map_provider.dart';
 
 class SupervisorAlertDetailScreen extends ConsumerStatefulWidget {
   final String alertId;
-
   const SupervisorAlertDetailScreen({super.key, required this.alertId});
 
   @override
@@ -24,7 +23,7 @@ class _SupervisorAlertDetailScreenState
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return; // ← GUARD
+      if (!mounted) return;
       ref.read(alertDetailProvider.notifier).loadAlert(widget.alertId);
     });
   }
@@ -36,26 +35,27 @@ class _SupervisorAlertDetailScreenState
   }
 
   Future<void> _handleUpdateStatus(String status) async {
-    if (!mounted) return; // ← GUARD
+    if (!mounted) return;
     final comment = _commentController.text.trim();
     final ok = await ref.read(alertDetailProvider.notifier).updateStatus(
           alertId: widget.alertId,
           status:  status,
           comment: comment.isNotEmpty ? comment : null,
         );
-    if (ok && mounted) { // ← GUARD après await
+    if (ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(status == 'traiter'
               ? '✅ Alerte marquée comme traitée'
               : '❌ Alerte rejetée'),
-          backgroundColor:
-              status == 'traiter' ? AppColors.success : AppColors.textMuted,
+          backgroundColor: status == 'traiter'
+              ? AppColors.success
+              : AppColors.textMuted,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10)),
         ),
       );
-      // Refresh des listes parentes
       ref.read(historiqueProvider.notifier).load();
       ref.read(alertMapProvider.notifier).refreshNow();
     }
@@ -68,8 +68,8 @@ class _SupervisorAlertDetailScreenState
     return Scaffold(
       backgroundColor: AppColors.bgPage,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
+        backgroundColor:        Colors.white,
+        elevation:              0,
         scrolledUnderElevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new,
@@ -95,7 +95,7 @@ class _SupervisorAlertDetailScreenState
               ? _ErrorView(
                   message: state.error!,
                   onRetry: () {
-                    if (!mounted) return; // ← GUARD
+                    if (!mounted) return;
                     ref
                         .read(alertDetailProvider.notifier)
                         .loadAlert(widget.alertId);
@@ -108,17 +108,20 @@ class _SupervisorAlertDetailScreenState
                       isUpdating:        state.isUpdating,
                       commentController: _commentController,
                       commentExpanded:   _commentExpanded,
-                      onToggleComment:   () {
-                        if (!mounted) return; // ← GUARD
-                        setState(() => _commentExpanded = !_commentExpanded);
+                      onToggleComment: () {
+                        if (!mounted) return;
+                        setState(
+                            () => _commentExpanded = !_commentExpanded);
                       },
-                      onUpdateStatus:    _handleUpdateStatus,
+                      onUpdateStatus: _handleUpdateStatus,
                     ),
     );
   }
 }
 
-// ── Main content ──────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+//  CONTENU PRINCIPAL
+// ══════════════════════════════════════════════════════════════
 
 class _AlertContent extends StatelessWidget {
   final AlertDetail           alert;
@@ -138,16 +141,16 @@ class _AlertContent extends StatelessWidget {
   });
 
   Color get _statusColor => switch (alert.status) {
-        AlertStatus.en_cours => AppColors.danger,
-        AlertStatus.traiter  => AppColors.success,
-        AlertStatus.rejeter  => AppColors.textMuted,
-      };
+    AlertStatus.en_cours => AppColors.danger,
+    AlertStatus.traiter  => AppColors.success,
+    AlertStatus.rejeter  => AppColors.textMuted,
+  };
 
   Color get _statusBg => switch (alert.status) {
-        AlertStatus.en_cours => AppColors.danger.withOpacity(0.08),
-        AlertStatus.traiter  => AppColors.successBg,
-        AlertStatus.rejeter  => AppColors.bgInput,
-      };
+    AlertStatus.en_cours => AppColors.danger.withOpacity(0.08),
+    AlertStatus.traiter  => AppColors.successBg,
+    AlertStatus.rejeter  => AppColors.bgInput,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -157,7 +160,7 @@ class _AlertContent extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
 
-          // ── Header ──────────────────────────────────────
+          // ── Header : type + statut ───────────────────
           _SectionCard(
             child: Row(children: [
               Container(
@@ -184,7 +187,8 @@ class _AlertContent extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(_formatDate(alert.createdAt),
                         style: const TextStyle(
-                            fontSize: 12, color: AppColors.textMuted)),
+                            fontSize: 12,
+                            color:    AppColors.textMuted)),
                   ],
                 ),
               ),
@@ -195,7 +199,8 @@ class _AlertContent extends StatelessWidget {
                   color:        _statusBg,
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                      color: _statusColor.withOpacity(0.3), width: 0.5),
+                      color: _statusColor.withOpacity(0.3),
+                      width: 0.5),
                 ),
                 child: Text(alert.status.label,
                     style: TextStyle(
@@ -208,7 +213,7 @@ class _AlertContent extends StatelessWidget {
 
           const SizedBox(height: 12),
 
-          // ── Image ────────────────────────────────────────
+          // ── Image ────────────────────────────────────
           if (alert.imageUrl != null) ...[
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
@@ -233,8 +238,9 @@ class _AlertContent extends StatelessWidget {
             const SizedBox(height: 12),
           ],
 
-          // ── Description ──────────────────────────────────
-          if (alert.description != null && alert.description!.isNotEmpty) ...[
+          // ── Description ──────────────────────────────
+          if (alert.description != null &&
+              alert.description!.isNotEmpty) ...[
             _SectionCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -252,14 +258,66 @@ class _AlertContent extends StatelessWidget {
             const SizedBox(height: 12),
           ],
 
-          // ── Localisation ─────────────────────────────────
+          // ── Agent émetteur ────────────────────────────
+          if (alert.agentNom != null &&
+              alert.agentNom!.isNotEmpty) ...[
+            _SectionCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const _Label('Agent émetteur'),
+                  const SizedBox(height: 10),
+                  _InfoRow(
+                    icon:  Icons.person_outline,
+                    color: AppColors.primaryMid,
+                    label: alert.agentNom!,
+                    bold:  true,
+                  ),
+                  if (alert.agentPhone != null &&
+                      alert.agentPhone!.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    _InfoRow(
+                      icon:  Icons.phone_outlined,
+                      color: AppColors.textSecondary,
+                      label: alert.agentPhone!,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // ── Agents dans la zone ───────────────────────
+          if (alert.zoneAgents.isNotEmpty) ...[
+            _SectionCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _LabelWithCount(
+                    label: 'Agents dans la zone',
+                    count: alert.zoneAgents.length,
+                  ),
+                  const SizedBox(height: 10),
+                  ...alert.zoneAgents.map(
+                    (agent) => _ZoneAgentRow(agent: agent),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // ── Localisation ─────────────────────────────
           _SectionCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const _Label('Localisation'),
                 const SizedBox(height: 10),
-                _LocationRow(
+
+                // Source GPS
+                _InfoRow(
                   icon:  alert.locationSource == LocationSource.exif
                       ? Icons.gps_fixed
                       : Icons.location_searching,
@@ -267,70 +325,42 @@ class _AlertContent extends StatelessWidget {
                       ? AppColors.success
                       : AppColors.warning,
                   label: switch (alert.locationSource) {
-                    LocationSource.exif        => 'GPS photo (précis)',
-                    LocationSource.agent_gps   => 'GPS téléphone',
-                    LocationSource.forest_only => 'Position approximative (centroïde forêt)',
+                    LocationSource.exif      => 'GPS photo (précis)',
+                    LocationSource.agent_gps => 'GPS téléphone',
+                    LocationSource.forest_only => alert.forestName != null
+                        ? 'Position approximative — ${alert.forestName}'
+                        : 'Position approximative',
                   },
                 ),
+
+                // Coordonnées incident
                 if (alert.incidentLat != null) ...[
                   const SizedBox(height: 6),
-                  _LocationRow(
+                  _InfoRow(
                     icon:  Icons.my_location,
                     color: AppColors.primaryMid,
-                    label: 'Incident : ${alert.incidentLat!.toStringAsFixed(5)}, '
+                    label: 'Incident : '
+                           '${alert.incidentLat!.toStringAsFixed(5)}, '
                            '${alert.incidentLng!.toStringAsFixed(5)}',
                   ),
                 ],
+
+                // Coordonnées agent
                 if (alert.agentLat != null) ...[
                   const SizedBox(height: 6),
-                  _LocationRow(
+                  _InfoRow(
                     icon:  Icons.person_pin_circle_outlined,
                     color: AppColors.info,
-                    label: 'Agent : ${alert.agentLat!.toStringAsFixed(5)}, '
+                    label: 'Agent : '
+                           '${alert.agentLat!.toStringAsFixed(5)}, '
                            '${alert.agentLng!.toStringAsFixed(5)}',
                   ),
                 ],
+
+                // Distance
                 if (alert.distanceKm != null) ...[
                   const SizedBox(height: 10),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: alert.distanceKm! > 5
-                          ? AppColors.danger.withOpacity(0.08)
-                          : AppColors.successBg,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: alert.distanceKm! > 5
-                            ? AppColors.danger.withOpacity(0.3)
-                            : AppColors.success.withOpacity(0.3),
-                        width: 0.5,
-                      ),
-                    ),
-                    child: Row(children: [
-                      Icon(
-                        alert.distanceKm! > 5
-                            ? Icons.warning_outlined
-                            : Icons.check_circle_outline,
-                        size:  14,
-                        color: alert.distanceKm! > 5
-                            ? AppColors.danger
-                            : AppColors.success,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Distance agent ↔ incident : '
-                        '${alert.distanceKm!.toStringAsFixed(1)} km'
-                        '${alert.distanceKm! > 5 ? '  ⚠️ Suspect' : ''}',
-                        style: TextStyle(
-                            fontSize:   12,
-                            fontWeight: FontWeight.w500,
-                            color:      alert.distanceKm! > 5
-                                ? AppColors.danger
-                                : AppColors.success),
-                      ),
-                    ]),
-                  ),
+                  _DistanceBanner(km: alert.distanceKm!),
                 ],
               ],
             ),
@@ -338,7 +368,7 @@ class _AlertContent extends StatelessWidget {
 
           const SizedBox(height: 12),
 
-          // ── Commentaire superviseur existant ──────────────
+          // ── Commentaire superviseur existant ──────────
           if (alert.supervisorComment != null &&
               alert.supervisorComment!.isNotEmpty) ...[
             _SectionCard(
@@ -378,7 +408,7 @@ class _AlertContent extends StatelessWidget {
             const SizedBox(height: 12),
           ],
 
-          // ── Actions (seulement si en_cours) ──────────────
+          // ── Actions (seulement si en_cours) ──────────
           if (alert.status == AlertStatus.en_cours) ...[
             _SectionCard(
               child: Column(
@@ -387,6 +417,7 @@ class _AlertContent extends StatelessWidget {
                   const _Label('Actions'),
                   const SizedBox(height: 12),
 
+                  // Toggle commentaire
                   GestureDetector(
                     onTap: onToggleComment,
                     child: Container(
@@ -400,7 +431,8 @@ class _AlertContent extends StatelessWidget {
                       ),
                       child: Row(children: [
                         const Icon(Icons.comment_outlined,
-                            size: 16, color: AppColors.textSecondary),
+                            size: 16,
+                            color: AppColors.textSecondary),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
@@ -426,14 +458,16 @@ class _AlertContent extends StatelessWidget {
                   if (commentExpanded) ...[
                     const SizedBox(height: 10),
                     TextField(
-                      controller:  commentController,
-                      maxLines:    3,
+                      controller: commentController,
+                      maxLines:   3,
                       style: const TextStyle(
-                          fontSize: 13, color: AppColors.textPrimary),
+                          fontSize: 13,
+                          color:    AppColors.textPrimary),
                       decoration: InputDecoration(
-                        hintText: 'Votre commentaire...',
+                        hintText:  'Votre commentaire...',
                         hintStyle: const TextStyle(
-                            fontSize: 13, color: AppColors.textMuted),
+                            fontSize: 13,
+                            color:    AppColors.textMuted),
                         filled:    true,
                         fillColor: AppColors.bgInput,
                         border: OutlineInputBorder(
@@ -461,23 +495,23 @@ class _AlertContent extends StatelessWidget {
                   Row(children: [
                     Expanded(
                       child: _ActionButton(
-                        label:      'Traiter',
-                        icon:       Icons.check_circle_outline,
-                        color:      AppColors.success,
-                        bg:         AppColors.successBg,
-                        isLoading:  isUpdating,
-                        onPressed:  () => onUpdateStatus('traiter'),
+                        label:     'Traiter',
+                        icon:      Icons.check_circle_outline,
+                        color:     AppColors.success,
+                        bg:        AppColors.successBg,
+                        isLoading: isUpdating,
+                        onPressed: () => onUpdateStatus('traiter'),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: _ActionButton(
-                        label:      'Rejeter',
-                        icon:       Icons.cancel_outlined,
-                        color:      AppColors.danger,
-                        bg:         AppColors.danger.withOpacity(0.08),
-                        isLoading:  isUpdating,
-                        onPressed:  () => _confirmReject(context),
+                        label:     'Rejeter',
+                        icon:      Icons.cancel_outlined,
+                        color:     AppColors.danger,
+                        bg:        AppColors.danger.withOpacity(0.08),
+                        isLoading: isUpdating,
+                        onPressed: () => _confirmReject(context),
                       ),
                     ),
                   ]),
@@ -487,7 +521,7 @@ class _AlertContent extends StatelessWidget {
             const SizedBox(height: 12),
           ],
 
-          // ── Statut final ──────────────────────────────────
+          // ── Statut final ──────────────────────────────
           if (alert.status != AlertStatus.en_cours) ...[
             _SectionCard(
               child: Row(children: [
@@ -500,7 +534,8 @@ class _AlertContent extends StatelessWidget {
                 ),
                 const SizedBox(width: 10),
                 Text(
-                  'Alerte ${alert.status.label.toLowerCase()} — aucune action possible',
+                  'Alerte ${alert.status.label.toLowerCase()} '
+                  '— aucune action possible',
                   style: TextStyle(
                       fontSize:   13,
                       color:      _statusColor,
@@ -521,7 +556,8 @@ class _AlertContent extends StatelessWidget {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16)),
         title: const Text('Rejeter l\'alerte',
             style: TextStyle(
                 fontSize:   17,
@@ -529,7 +565,8 @@ class _AlertContent extends StatelessWidget {
                 color:      AppColors.textPrimary)),
         content: const Text(
           'Voulez-vous vraiment rejeter cette alerte ?',
-          style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
+          style: TextStyle(
+              fontSize: 14, color: AppColors.textSecondary),
         ),
         actions: [
           TextButton(
@@ -564,7 +601,9 @@ class _AlertContent extends StatelessWidget {
       '${dt.minute.toString().padLeft(2, '0')}';
 }
 
-// ── Widgets réutilisables ─────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+//  WIDGETS RÉUTILISABLES
+// ══════════════════════════════════════════════════════════════
 
 class _SectionCard extends StatelessWidget {
   final Widget child;
@@ -603,12 +642,47 @@ class _Label extends StatelessWidget {
           letterSpacing: 0.3));
 }
 
-class _LocationRow extends StatelessWidget {
+class _LabelWithCount extends StatelessWidget {
+  final String label;
+  final int    count;
+  const _LabelWithCount({required this.label, required this.count});
+
+  @override
+  Widget build(BuildContext context) => Row(children: [
+        Text(label,
+            style: const TextStyle(
+                fontSize:      11,
+                fontWeight:    FontWeight.w600,
+                color:         AppColors.textSecondary,
+                letterSpacing: 0.3)),
+        const SizedBox(width: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(
+              horizontal: 6, vertical: 1),
+          decoration: BoxDecoration(
+            color:        AppColors.primaryLight,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text('$count',
+              style: const TextStyle(
+                  fontSize:   9,
+                  fontWeight: FontWeight.w700,
+                  color:      AppColors.primaryMid)),
+        ),
+      ]);
+}
+
+class _InfoRow extends StatelessWidget {
   final IconData icon;
   final Color    color;
   final String   label;
-  const _LocationRow(
-      {required this.icon, required this.color, required this.label});
+  final bool     bold;
+  const _InfoRow({
+    required this.icon,
+    required this.color,
+    required this.label,
+    this.bold = false,
+  });
 
   @override
   Widget build(BuildContext context) => Row(children: [
@@ -616,10 +690,112 @@ class _LocationRow extends StatelessWidget {
         const SizedBox(width: 8),
         Expanded(
           child: Text(label,
-              style: const TextStyle(
-                  fontSize: 12, color: AppColors.textSecondary)),
+              style: TextStyle(
+                  fontSize:   12,
+                  color:      bold
+                      ? AppColors.textPrimary
+                      : AppColors.textSecondary,
+                  fontWeight: bold
+                      ? FontWeight.w500
+                      : FontWeight.normal)),
         ),
       ]);
+}
+
+class _ZoneAgentRow extends StatelessWidget {
+  final ZoneAgent agent;
+  const _ZoneAgentRow({required this.agent});
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(children: [
+          Container(
+            width: 34, height: 34,
+            decoration: BoxDecoration(
+              color:        AppColors.primaryLight,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(Icons.person_outline,
+                size: 16, color: AppColors.primaryMid),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(agent.nom,
+                    style: const TextStyle(
+                        fontSize:   13,
+                        fontWeight: FontWeight.w500,
+                        color:      AppColors.textPrimary)),
+                if (agent.parcelleName != null)
+                  Text(agent.parcelleName!,
+                      style: const TextStyle(
+                          fontSize: 11,
+                          color:    AppColors.textMuted)),
+              ],
+            ),
+          ),
+          if (agent.phone.isNotEmpty)
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.phone_outlined,
+                  size: 11, color: AppColors.textMuted),
+              const SizedBox(width: 3),
+              Text(agent.phone,
+                  style: const TextStyle(
+                      fontSize: 11,
+                      color:    AppColors.textMuted)),
+            ]),
+        ]),
+      );
+}
+
+class _DistanceBanner extends StatelessWidget {
+  final double km;
+  const _DistanceBanner({required this.km});
+
+  @override
+  Widget build(BuildContext context) {
+    final isSuspect = km > 5;
+    return Container(
+      padding: const EdgeInsets.symmetric(
+          horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: isSuspect
+            ? AppColors.danger.withOpacity(0.08)
+            : AppColors.successBg,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isSuspect
+              ? AppColors.danger.withOpacity(0.3)
+              : AppColors.success.withOpacity(0.3),
+          width: 0.5,
+        ),
+      ),
+      child: Row(children: [
+        Icon(
+          isSuspect
+              ? Icons.warning_outlined
+              : Icons.check_circle_outline,
+          size:  14,
+          color: isSuspect ? AppColors.danger : AppColors.success,
+        ),
+        const SizedBox(width: 8),
+        Text(
+          'Distance agent ↔ incident : '
+          '${km.toStringAsFixed(1)} km'
+          '${isSuspect ? '  ⚠️ Suspect' : ''}',
+          style: TextStyle(
+              fontSize:   12,
+              fontWeight: FontWeight.w500,
+              color: isSuspect
+                  ? AppColors.danger
+                  : AppColors.success),
+        ),
+      ]),
+    );
+  }
 }
 
 class _ActionButton extends StatelessWidget {
@@ -646,7 +822,7 @@ class _ActionButton extends StatelessWidget {
             ? SizedBox(
                 width:  14,
                 height: 14,
-                child: CircularProgressIndicator(
+                child:  CircularProgressIndicator(
                     strokeWidth: 2, color: color))
             : Icon(icon, size: 16, color: color),
         label: Text(label,
@@ -660,7 +836,8 @@ class _ActionButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 12),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8),
-            side: BorderSide(color: color.withOpacity(0.3), width: 0.5),
+            side: BorderSide(
+                color: color.withOpacity(0.3), width: 0.5),
           ),
         ),
       );
@@ -682,11 +859,12 @@ class _ErrorView extends StatelessWidget {
             Text(message,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                    fontSize: 14, color: AppColors.textSecondary)),
+                    fontSize: 14,
+                    color:    AppColors.textSecondary)),
             const SizedBox(height: 16),
             ElevatedButton.icon(
               onPressed: onRetry,
-              icon: const Icon(Icons.refresh, size: 16),
+              icon:  const Icon(Icons.refresh, size: 16),
               label: const Text('Réessayer'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primaryMid,

@@ -4,9 +4,10 @@ from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
 from alembic import context
+from app.models.assignment_cache import AssignmentCache
 
 # ── Ajouter le répertoire racine au path ──────────────────
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 
 # ── Importer les DEUX modèles ─────────────────────────────
 # L'ordre est important : Forest d'abord (Parcelle dépend de Forest via FK)
@@ -16,6 +17,8 @@ from app.db.database import Base
 # ── GeoAlchemy2 — nécessaire pour que Alembic reconnaisse
 #    le type Geometry et génère le bon DDL PostGIS ─────────
 import geoalchemy2  
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 # ── Config Alembic ────────────────────────────────────────
 config = context.config

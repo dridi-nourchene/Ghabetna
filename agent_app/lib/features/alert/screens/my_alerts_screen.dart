@@ -1,4 +1,3 @@
-// agent_app/lib/features/alert/screens/my_alerts_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:agent_app/l10n/app_localizations.dart';
@@ -33,16 +32,15 @@ class _MyAlertsScreenState extends ConsumerState<MyAlertsScreen> {
                 color: AgentColors.primary, strokeWidth: 2))
         : state.error != null
             ? _ErrorView(
-                message: state.error!,
+                message:    state.error!,
                 retryLabel: l10n.myAlertsRetry,
-                onRetry: () => ref.read(myAlertsProvider.notifier).load(),
+                onRetry:    () => ref.read(myAlertsProvider.notifier).load(),
               )
             : state.alerts.isEmpty
                 ? _EmptyView(l10n: l10n)
                 : RefreshIndicator(
-                    color:    AgentColors.primary,
-                    onRefresh: () =>
-                        ref.read(myAlertsProvider.notifier).load(),
+                    color:     AgentColors.primary,
+                    onRefresh: () => ref.read(myAlertsProvider.notifier).load(),
                     child: ListView.builder(
                       padding:     const EdgeInsets.all(16),
                       itemCount:   state.alerts.length,
@@ -61,34 +59,34 @@ class _AlertCard extends StatelessWidget {
   const _AlertCard({required this.alert, required this.l10n});
 
   Color get _statusColor => switch (alert.status) {
-        AlertStatus.en_cours => const Color(0xFFE05C2A),
-        AlertStatus.traiter  => const Color(0xFF1D9E75),
-        AlertStatus.rejeter  => const Color(0xFF9E9E9E),
-      };
+    AlertStatus.en_cours => const Color(0xFFE05C2A),
+    AlertStatus.traiter  => const Color(0xFF1D9E75),
+    AlertStatus.rejeter  => const Color(0xFF9E9E9E),
+  };
 
   Color get _statusBg => switch (alert.status) {
-        AlertStatus.en_cours => const Color(0xFFFFF0EA),
-        AlertStatus.traiter  => const Color(0xFFE8F5EE),
-        AlertStatus.rejeter  => const Color(0xFFF5F5F5),
-      };
+    AlertStatus.en_cours => const Color(0xFFFFF0EA),
+    AlertStatus.traiter  => const Color(0xFFE8F5EE),
+    AlertStatus.rejeter  => const Color(0xFFF5F5F5),
+  };
 
   String _statusLabel() => switch (alert.status) {
-        AlertStatus.en_cours => l10n.alertStatusEnCours,
-        AlertStatus.traiter  => l10n.alertStatusTraiter,
-        AlertStatus.rejeter  => l10n.alertStatusRejeter,
-      };
+    AlertStatus.en_cours => l10n.alertStatusEnCours,
+    AlertStatus.traiter  => l10n.alertStatusTraiter,
+    AlertStatus.rejeter  => l10n.alertStatusRejeter,
+  };
 
   String _typeLabel() => switch (alert.type) {
-        AlertType.incendie   => l10n.alertTypeIncendie,
-        AlertType.vol        => l10n.alertTypeVol,
-        AlertType.inondation => l10n.alertTypeInondation,
-        AlertType.glissement => l10n.alertTypeGlissement,
-        AlertType.maladie    => l10n.alertTypeMaladie,
-        AlertType.depot_dechets => l10n.alertTypeDepotDechets,
-        AlertType.chasse_illegale => l10n.alertTypeChasseIllegale,
-        AlertType.activite_suspecte => l10n.alertTypeActiviteSuspecte,
-        AlertType.autre      => l10n.alertTypeAutre,
-      };
+    AlertType.incendie          => l10n.alertTypeIncendie,
+    AlertType.vol               => l10n.alertTypeVol,
+    AlertType.inondation        => l10n.alertTypeInondation,
+    AlertType.glissement        => l10n.alertTypeGlissement,
+    AlertType.maladie           => l10n.alertTypeMaladie,
+    AlertType.depot_dechets     => l10n.alertTypeDepotDechets,
+    AlertType.chasse_illegale   => l10n.alertTypeChasseIllegale,
+    AlertType.activite_suspecte => l10n.alertTypeActiviteSuspecte,
+    AlertType.autre             => l10n.alertTypeAutre,
+  };
 
   @override
   Widget build(BuildContext context) => Container(
@@ -108,15 +106,16 @@ class _AlertCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ── Image ────────────────────────────────
             if (alert.imageUrl != null)
               ClipRRect(
                 borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(14)),
                 child: Image.network(
                   alert.imageUrl!,
-                  width:     double.infinity,
-                  height:    140,
-                  fit:       BoxFit.cover,
+                  width:   double.infinity,
+                  height:  140,
+                  fit:     BoxFit.cover,
                   errorBuilder: (_, __, ___) => Container(
                     height: 60,
                     color:  const Color(0xFFF5F5F5),
@@ -133,6 +132,7 @@ class _AlertCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // ── Type + Statut ─────────────────
                   Row(children: [
                     Text(alert.type.emoji,
                         style: const TextStyle(fontSize: 20)),
@@ -158,6 +158,22 @@ class _AlertCard extends StatelessWidget {
                     ),
                   ]),
 
+                  // ── Forêt ─────────────────────────
+                  if (alert.forestName != null &&
+                      alert.forestName!.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Row(children: [
+                      const Icon(Icons.park_outlined,
+                          size: 13, color: AgentColors.textMuted),
+                      const SizedBox(width: 4),
+                      Text(alert.forestName!,
+                          style: const TextStyle(
+                              fontSize: 12,
+                              color:    AgentColors.textMuted)),
+                    ]),
+                  ],
+
+                  // ── Description ───────────────────
                   if (alert.description != null &&
                       alert.description!.isNotEmpty) ...[
                     const SizedBox(height: 8),
@@ -169,7 +185,7 @@ class _AlertCard extends StatelessWidget {
                         overflow:  TextOverflow.ellipsis),
                   ],
 
-                  // ← utilise supervisorComment (plus adminComment)
+                  // ── Commentaire superviseur ───────
                   if (alert.supervisorComment != null &&
                       alert.supervisorComment!.isNotEmpty) ...[
                     const SizedBox(height: 10),
@@ -198,6 +214,7 @@ class _AlertCard extends StatelessWidget {
 
                   const SizedBox(height: 10),
 
+                  // ── Date + GPS badge ──────────────
                   Row(children: [
                     const Icon(Icons.access_time,
                         size: 12, color: AgentColors.textMuted),
@@ -208,7 +225,6 @@ class _AlertCard extends StatelessWidget {
                           fontSize: 11, color: AgentColors.textMuted),
                     ),
                     const SizedBox(width: 12),
-                    // ← badge source GPS
                     _LocationBadge(source: alert.locationSource),
                   ]),
                 ],
@@ -222,7 +238,7 @@ class _AlertCard extends StatelessWidget {
     final now  = DateTime.now();
     final diff = now.difference(dt);
     if (diff.inMinutes < 60) return '${diff.inMinutes} min';
-    if (diff.inHours < 24)  return '${diff.inHours}h';
+    if (diff.inHours < 24)   return '${diff.inHours}h';
     return '${dt.day}/${dt.month}/${dt.year}';
   }
 }
@@ -243,8 +259,7 @@ class _LocationBadge extends StatelessWidget {
     return Row(mainAxisSize: MainAxisSize.min, children: [
       Icon(icon, size: 11, color: color),
       const SizedBox(width: 3),
-      Text(label,
-          style: TextStyle(fontSize: 10, color: color)),
+      Text(label, style: TextStyle(fontSize: 10, color: color)),
     ]);
   }
 }
@@ -261,7 +276,7 @@ class _EmptyView extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.notifications_none_outlined,
-                size: 64,
+                size:  64,
                 color: AgentColors.textMuted.withOpacity(0.4)),
             const SizedBox(height: 16),
             Text(l10n.myAlertsEmpty,

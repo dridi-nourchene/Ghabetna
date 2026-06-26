@@ -7,7 +7,7 @@ import json
 from app.db.database import get_db
 from app.core.dependencies import get_current_user_id, require_supervisor
 from app.models.alert import AlertType, AlertStatus
-from app.schemas.alert import AlertStatusUpdate
+from app.schemas.alert import AlertDetailResponse, AlertStatusUpdate
 from app.services import alert_service
 
 router = APIRouter(prefix="/api/alerts", tags=["Alertes"])
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/alerts", tags=["Alertes"])
 
 # ── CREATE (agent) ────────────────────────────────────────────
 
-@router.post("/", status_code=201)
+@router.post("/", status_code=201,response_model=AlertDetailResponse)
 async def create_alert(
     type:         AlertType      = Form(...),
     forest_id:    UUID           = Form(...),
@@ -39,7 +39,7 @@ async def create_alert(
 
 # ── MINE (agent) ──────────────────────────────────────────────
 
-@router.get("/mine")
+@router.get("/mine",response_model=list[AlertDetailResponse])
 async def get_my_alerts(
     db:       AsyncSession = Depends(get_db),
     agent_id: UUID         = Depends(get_current_user_id),
@@ -65,7 +65,7 @@ async def get_supervisor_map(
 
 # ── LIST (supervisor — forêts assignées) ─────────────────────
 
-@router.get("/supervisor")
+@router.get("/supervisor",response_model=list[AlertDetailResponse])
 async def get_supervisor_alerts(
     status:        Optional[AlertStatus] = None,
     db:            AsyncSession          = Depends(get_db),
@@ -80,7 +80,7 @@ async def get_supervisor_alerts(
 
 # ── GET BY ID ─────────────────────────────────────────────────
 
-@router.get("/{alert_id}")
+@router.get("/{alert_id}",response_model=AlertDetailResponse)
 async def get_alert(
     alert_id: UUID,
     db:       AsyncSession = Depends(get_db),
@@ -91,7 +91,7 @@ async def get_alert(
 
 # ── UPDATE STATUS (supervisor) ────────────────────────────────
 
-@router.patch("/{alert_id}/status")
+@router.patch("/{alert_id}/status",response_model=AlertDetailResponse)
 async def update_status(
     alert_id:      UUID,
     data:          AlertStatusUpdate,

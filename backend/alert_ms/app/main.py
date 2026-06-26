@@ -10,7 +10,7 @@ from app.routers.alert_router import router as alert_router
 from app.core.redis_client import get_redis, close_redis
 from app.consumers.assignment_consumer import run_assignment_consumer
 import app.models.alert
-import app.models.assignment_cache  # ← ajouter
+import app.models.assignment_cache  
 
 logger = logging.getLogger(__name__)
 

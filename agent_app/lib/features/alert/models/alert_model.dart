@@ -1,5 +1,3 @@
-// agent_app/lib/features/alert/models/alert_model.dart
-
 enum AlertType {
   incendie,
   vol,
@@ -12,27 +10,27 @@ enum AlertType {
   autre;
 
   String get label => switch (this) {
-    AlertType.incendie           => 'Incendie',
-    AlertType.vol                => 'Vol',
-    AlertType.inondation         => 'Inondation',
-    AlertType.glissement         => 'Glissement de terrain',
-    AlertType.maladie            => 'Maladie forestière',
-    AlertType.depot_dechets      => 'Dépôt des déchets',
-    AlertType.chasse_illegale    => 'Chasse illégale',
-    AlertType.activite_suspecte  => 'Activité suspecte',
-    AlertType.autre              => 'Autre',
+    AlertType.incendie          => 'Incendie',
+    AlertType.vol               => 'Vol',
+    AlertType.inondation        => 'Inondation',
+    AlertType.glissement        => 'Glissement de terrain',
+    AlertType.maladie           => 'Maladie forestière',
+    AlertType.depot_dechets     => 'Dépôt des déchets',
+    AlertType.chasse_illegale   => 'Chasse illégale',
+    AlertType.activite_suspecte => 'Activité suspecte',
+    AlertType.autre             => 'Autre',
   };
 
   String get emoji => switch (this) {
-    AlertType.incendie           => '🔥',
-    AlertType.vol                => '🔒',
-    AlertType.inondation         => '💧',
-    AlertType.glissement         => '⛰️',
-    AlertType.maladie            => '🌿',
-    AlertType.depot_dechets      => '🗑️',
-    AlertType.chasse_illegale    => '🐾',
-    AlertType.activite_suspecte  => '👀',
-    AlertType.autre              => '⚠️',
+    AlertType.incendie          => '🔥',
+    AlertType.vol               => '🔒',
+    AlertType.inondation        => '💧',
+    AlertType.glissement        => '⛰️',
+    AlertType.maladie           => '🌿',
+    AlertType.depot_dechets     => '🗑️',
+    AlertType.chasse_illegale   => '🐾',
+    AlertType.activite_suspecte => '👀',
+    AlertType.autre             => '⚠️',
   };
 
   String get value => name;
@@ -43,7 +41,9 @@ enum AlertType {
 }
 
 enum AlertStatus {
-  en_cours, traiter, rejeter;
+  en_cours,
+  traiter,
+  rejeter;
 
   String get label => switch (this) {
     AlertStatus.en_cours => 'En cours',
@@ -57,7 +57,9 @@ enum AlertStatus {
 }
 
 enum LocationSource {
-  exif, agent_gps, forest_only;
+  exif,
+  agent_gps,
+  forest_only;
 
   String get label => switch (this) {
     LocationSource.exif        => 'GPS photo',
@@ -70,25 +72,65 @@ enum LocationSource {
           orElse: () => LocationSource.forest_only);
 }
 
+// ── Agent dans la zone ────────────────────────────────────────
+
+class ZoneAgent {
+  final String  nom;
+  final String  phone;
+  final String? parcelleName;
+
+  const ZoneAgent({
+    required this.nom,
+    required this.phone,
+    this.parcelleName,
+  });
+
+  factory ZoneAgent.fromJson(Map<String, dynamic> j) => ZoneAgent(
+    nom:          j['nom']          as String? ?? '',
+    phone:        j['phone']        as String? ?? '',
+    parcelleName: j['parcelle_name'] as String?,
+  );
+}
+
+// ── Modèle principal ──────────────────────────────────────────
+
 class AlertModel {
   final String         id;
+  final String         agentId;
+  final String         forestId;
   final AlertType      type;
   final AlertStatus    status;
   final String?        description;
+
+  // Localisation
   final double?        incidentLat;
   final double?        incidentLng;
   final double?        agentLat;
   final double?        agentLng;
   final LocationSource locationSource;
+
+  // Enrichissements backend
+  final String?        agentNom;
+  final String?        agentPhone;
+  final String?        forestName;
+  final List<ZoneAgent> zoneAgents;
+
+  // Média
   final String?        imageUrl;
-  final String         agentId;
-  final String         forestId;
+
+  // Superviseur
   final String?        supervisorComment;
   final String?        supervisorId;
+  final DateTime?      commentedAt;
+
+  // Dates
   final DateTime       createdAt;
+  final DateTime?      updatedAt;
 
   const AlertModel({
     required this.id,
+    required this.agentId,
+    required this.forestId,
     required this.type,
     required this.status,
     this.description,
@@ -97,33 +139,51 @@ class AlertModel {
     this.agentLat,
     this.agentLng,
     required this.locationSource,
+    this.agentNom,
+    this.agentPhone,
+    this.forestName,
+    this.zoneAgents = const [],
     this.imageUrl,
-    required this.agentId,
-    required this.forestId,
     this.supervisorComment,
     this.supervisorId,
+    this.commentedAt,
     required this.createdAt,
+    this.updatedAt,
   });
 
   factory AlertModel.fromJson(Map<String, dynamic> j) => AlertModel(
-    id:                j['id'],
-    type:              AlertType.fromString(j['type']),
-    status:            AlertStatus.fromString(j['status']),
-    description:       j['description'],
-    incidentLat:       (j['incident_lat'] as num?)?.toDouble(),
-    incidentLng:       (j['incident_lng'] as num?)?.toDouble(),
-    agentLat:          (j['agent_lat']    as num?)?.toDouble(),
-    agentLng:          (j['agent_lng']    as num?)?.toDouble(),
-    locationSource:    LocationSource.fromString(
-                           j['location_source'] ?? 'forest_only'),
-    imageUrl:          j['image_url'],
-    agentId:           j['agent_id'],
-    forestId:          j['forest_id'],
-    supervisorComment: j['supervisor_comment'],
-    supervisorId:      j['supervisor_id'],
-    createdAt:         DateTime.parse(j['created_at']),
+    id:               j['id']        as String,
+    agentId:          j['agent_id']  as String,
+    forestId:         j['forest_id'] as String,
+    type:             AlertType.fromString(j['type'] as String),
+    status:           AlertStatus.fromString(j['status'] as String),
+    description:      j['description'] as String?,
+    incidentLat:      (j['incident_lat'] as num?)?.toDouble(),
+    incidentLng:      (j['incident_lng'] as num?)?.toDouble(),
+    agentLat:         (j['agent_lat']    as num?)?.toDouble(),
+    agentLng:         (j['agent_lng']    as num?)?.toDouble(),
+    locationSource:   LocationSource.fromString(
+                          j['location_source'] as String? ?? 'forest_only'),
+    agentNom:         j['agent_nom']   as String?,
+    agentPhone:       j['agent_phone'] as String?,
+    forestName:       j['forest_name'] as String?,
+    zoneAgents:       (j['zone_agents'] as List? ?? [])
+                          .map((e) => ZoneAgent.fromJson(e as Map<String, dynamic>))
+                          .toList(),
+    imageUrl:         j['image_url']  as String?,
+    supervisorComment: j['supervisor_comment'] as String?,
+    supervisorId:     j['supervisor_id'] as String?,
+    commentedAt:      j['commented_at'] != null
+                          ? DateTime.tryParse(j['commented_at'] as String)
+                          : null,
+    createdAt:        DateTime.parse(j['created_at'] as String),
+    updatedAt:        j['updated_at'] != null
+                          ? DateTime.tryParse(j['updated_at'] as String)
+                          : null,
   );
 }
+
+// ── ForestSimple (inchangé) ───────────────────────────────────
 
 class ForestSimple {
   final String id;
@@ -132,7 +192,7 @@ class ForestSimple {
   const ForestSimple({required this.id, required this.name});
 
   factory ForestSimple.fromJson(Map<String, dynamic> j) => ForestSimple(
-    id:   j['id'],
-    name: j['name'],
+    id:   j['id']   as String,
+    name: j['name'] as String,
   );
 }

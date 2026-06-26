@@ -17,7 +17,7 @@ class AlertRepository {
   String buildImageUrl(String? imageUrl) {
     if (imageUrl == null || imageUrl.isEmpty) return '';
     if (imageUrl.startsWith('http')) return imageUrl;
-    return '$baseUrl$imageUrl';  // ex: http://192.168.1.9:8000/uploads/alerts/xxx.jpg
+    return '$baseUrl$imageUrl';
   }
 
   // ── Map points (forêts assignées au superviseur) ──────────────
@@ -30,7 +30,7 @@ class AlertRepository {
 
     if (res.statusCode == 200) {
       return (jsonDecode(res.body) as List)
-          .map((j) => AlertMapPoint.fromJson(j))
+          .map((j) => AlertMapPoint.fromJson(j as Map<String, dynamic>))
           .toList();
     }
     throw Exception('Erreur chargement carte (${res.statusCode})');
@@ -43,12 +43,13 @@ class AlertRepository {
       queryParameters: status != null ? {'status': status} : null,
     );
 
-    final res = await http.get(uri, headers: _headers)
+    final res = await http
+        .get(uri, headers: _headers)
         .timeout(const Duration(seconds: 15));
 
     if (res.statusCode == 200) {
       return (jsonDecode(res.body) as List)
-          .map((j) => _parseAlertDetail(j))
+          .map((j) => _parseAlertDetail(j as Map<String, dynamic>))
           .toList();
     }
     throw Exception('Erreur chargement alertes (${res.statusCode})');
@@ -63,7 +64,7 @@ class AlertRepository {
     ).timeout(const Duration(seconds: 15));
 
     if (res.statusCode == 200) {
-      return _parseAlertDetail(jsonDecode(res.body));
+      return _parseAlertDetail(jsonDecode(res.body) as Map<String, dynamic>);
     }
     throw Exception('Alerte introuvable (${res.statusCode})');
   }
@@ -73,7 +74,7 @@ class AlertRepository {
   Future<AlertDetail> updateStatus({
     required String alertId,
     required String status,
-    String? supervisorComment,
+    String?         supervisorComment,
   }) async {
     final res = await http.patch(
       Uri.parse('$baseUrl/api/alerts/$alertId/status'),
@@ -86,20 +87,20 @@ class AlertRepository {
     ).timeout(const Duration(seconds: 15));
 
     if (res.statusCode == 200) {
-      return _parseAlertDetail(jsonDecode(res.body));
+      return _parseAlertDetail(jsonDecode(res.body) as Map<String, dynamic>);
     }
-    final err = jsonDecode(res.body);
+    final err = jsonDecode(res.body) as Map<String, dynamic>;
     throw Exception(err['detail'] ?? 'Erreur mise à jour statut');
   }
 
-  // ── Parser AlertDetail  ──────────────
+  // ── Parser AlertDetail ────────────────────────────────────────
+
   AlertDetail _parseAlertDetail(Map<String, dynamic> j) {
     // Corriger l'URL de l'image avant de parser
     final rawImageUrl = j['image_url'] as String?;
-    final fixedJson = {
-      ...j,
-      'image_url': rawImageUrl != null ? buildImageUrl(rawImageUrl) : null,
-    };
+    final fixedJson   = Map<String, dynamic>.from(j);
+    fixedJson['image_url'] =
+        rawImageUrl != null ? buildImageUrl(rawImageUrl) : null;
     return AlertDetail.fromJson(fixedJson);
   }
 }

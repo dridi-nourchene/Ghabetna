@@ -77,9 +77,20 @@ async def _proxy_json(
             params  = request.query_params,
         )
 
-    if not response.content:
+    if not response.content or len(response.content) == 0:
         return Response(status_code=response.status_code)
-    return JSONResponse(status_code=response.status_code, content=response.json())
+
+    try:
+        return JSONResponse(
+            status_code=response.status_code,
+            content=response.json(),
+        )
+    except Exception:
+        return Response(
+            content=response.content,
+            status_code=response.status_code,
+            media_type="application/json",
+        )
 
 
 async def _proxy_multipart(request: Request, url: str) -> Response:
