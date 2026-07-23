@@ -34,6 +34,9 @@ class AdminDashboard extends ConsumerWidget {
           const _StatsRow(),
           const SizedBox(height: 18),
 
+           AlertsByForestChart(data: AlertsByForestData.mock()),
+          const SizedBox(height: 18),
+
           // ── Ligne du bas : utilisateurs + alertes ───────────
           const _BottomRow(),
         ],

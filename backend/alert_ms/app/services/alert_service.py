@@ -27,25 +27,52 @@ def _image_url(image_path: Optional[str]) -> Optional[str]:
     return f"{base}/uploads/{image_path}"
 
 
-# ── HELPERS SQL LOCAUX ───────────────────────────────────
-
-async def _get_agent_info(
-    db:       AsyncSession,
-    agent_id: UUID,
-) -> dict:
-    """Récupère nom + phone de l'agent depuis le cache local."""
+async def _get_agent_info(db: AsyncSession, agent_id: UUID) -> dict:
     result = await db.execute(
         select(AssignmentCache).where(
             AssignmentCache.agent_id == agent_id
         )
     )
     agent = result.scalar_one_or_none()
-    if agent:
-        return {
-            "nom":   agent.agent_nom   or "",
-            "phone": agent.agent_phone or "",
-        }
-    return {}
+    
+    if not agent:
+        print(f"[DEBUG] Agent {agent_id} NOT FOUND in AssignmentCache")
+        return {}
+    
+    print(f"[DEBUG] Agent {agent_id} → {agent.agent_nom}")
+    return {
+        "nom":   agent.agent_nom   or "",
+        "phone": agent.agent_phone or "",
+    }
+
+async def _get_zone_agents_enriched(db: AsyncSession, forest_id: UUID, 
+                                     exclude_parcelle_id: Optional[UUID] = None) -> list[dict]:
+    result = await db.execute(
+        select(AssignmentCache).where(
+            AssignmentCache.forest_id == forest_id
+        )
+    )
+    agents = result.scalars().all()
+    print(f"[DEBUG] Forest {forest_id} → {len(agents)} agents in cache")
+    
+    agents_list = []
+    for a in agents:
+        if exclude_parcelle_id and a.parcelle_id == exclude_parcelle_id:
+            print(f"[DEBUG] Excluding agent {a.agent_id} (same parcelle)")
+            continue
+        
+        if not a.agent_nom:
+            print(f"[DEBUG] Skipping agent {a.agent_id} (no name in cache)")
+            continue
+        
+        agents_list.append({
+            "nom": a.agent_nom or "",
+            "phone": a.agent_phone or "",
+            "parcelle_name": a.parcelle_name,
+        })
+    
+    print(f"[DEBUG] Returning {len(agents_list)} agents for display")
+    return agents_list
 
 
 async def _get_zone_agents(
@@ -86,45 +113,6 @@ async def _get_forest_name(
     if row and row.forest_name:
         return row.forest_name
     return None
-
-async def _get_zone_agents_enriched(
-    db:        AsyncSession,
-    forest_id: UUID,
-    exclude_parcelle_id: Optional[UUID] = None,
-) -> list[dict]:
-    """
-    Récupère tous les agents affectés dans une forêt avec leurs infos enrichies.
-
-    """
-    result = await db.execute(
-        select(AssignmentCache).where(
-            AssignmentCache.forest_id == forest_id
-        )
-    )
-    agents = result.scalars().all()
-    
-    agents_list = []
-    for a in agents:
-        # Si on a un exclude_parcelle_id et que l'agent y est, skip
-        if exclude_parcelle_id and a.parcelle_id == exclude_parcelle_id:
-            continue
-        
-        # Si agent n'a pas de nom (corruption), skip
-        if not a.agent_nom:
-            continue
-        
-        agent_dict = {
-            "nom": a.agent_nom or "",
-            "phone": a.agent_phone or "",
-        }
-        
-        # Ajouter parcelle_name si elle existe
-        if a.parcelle_name:
-            agent_dict["parcelle_name"] = a.parcelle_name
-        
-        agents_list.append(agent_dict)
-    
-    return agents_list
 
 
 # ── DICT ENRICHI ─────────────────────────────────────────
