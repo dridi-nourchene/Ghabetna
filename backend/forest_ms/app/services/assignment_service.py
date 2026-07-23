@@ -16,6 +16,8 @@ from app.core.streams import (
     STREAM_AGENT_ASSIGNED,
     STREAM_AGENT_REASSIGNED,
     STREAM_AGENT_REMOVED,
+  STREAM_SUPERVISEUR_ASSIGNED,   
+    STREAM_SUPERVISEUR_REMOVED,    
 )
 from app.core.redis_client import get_redis
 
@@ -81,16 +83,29 @@ async def assign_superviseur(
     forest_id:       UUID,
     superviseur_id:  UUID,
 ) -> dict:
-    """Affecte un superviseur à une forêt (remplace l'ancien si existant)."""
-    # Vérifier superviseur dans le cache
-    await _get_user_from_cache(db, superviseur_id, "supervisor")
-
-    # Vérifier forêt
+    """Affecte un superviseur à une forêt """
+    supervisor = await _get_user_from_cache(db, superviseur_id, "supervisor")
     forest = await _get_forest(db, forest_id)
 
-    # Affecter (upsert simple — on remplace)
     forest.superviseur_id = superviseur_id
     await db.commit()
+
+    # ── Publier l'événement pour alert_ms (analytics) ─────
+    try:
+        redis = await get_redis()
+        await redis.xadd(
+            STREAM_SUPERVISEUR_ASSIGNED,
+            {
+                "forest_id":         str(forest_id),
+                "forest_name":       forest.name,
+                "superviseur_id":    str(superviseur_id),
+                "superviseur_nom":   supervisor.nom,
+                "superviseur_email": supervisor.email,
+                "superviseur_phone": supervisor.phone or "",
+            },
+        )
+    except Exception as e:
+        print(f"[STREAM] Erreur publish superviseur.assigned : {e}")
 
     return await get_forest_with_superviseur(db, forest_id)
 
@@ -100,6 +115,13 @@ async def remove_superviseur(db: AsyncSession, forest_id: UUID) -> dict:
     forest = await _get_forest(db, forest_id)
     forest.superviseur_id = None
     await db.commit()
+
+    try:
+        redis = await get_redis()
+        await redis.xadd(STREAM_SUPERVISEUR_REMOVED, {"forest_id": str(forest_id)})
+    except Exception as e:
+        print(f"[STREAM] Erreur publish superviseur.removed : {e}")
+
     return {"message": "Superviseur retiré avec succès"}
 
 
@@ -183,6 +205,7 @@ async def assign_agent(
                 "forest_id":    str(parcelle.forest_id),
                 "agent_nom":    agent_nom,
                 "agent_phone":  agent_phone or "",
+                "agent_email":  agent_email,
                 "forest_name":  parcelle.forest.name,        
                 "parcelle_name": parcelle.name,             
             }
@@ -236,6 +259,7 @@ async def reassign_agent(
                 "forest_id":     str(parcelle.forest_id),
                 "agent_nom":     agent_nom,
                 "agent_phone":   agent_phone or "",
+                "agent_email":  agent_email,
                 "forest_name":   parcelle.forest.name,        
                 "parcelle_name": parcelle.name,               
             }

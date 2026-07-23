@@ -8,6 +8,7 @@ from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 import redis.asyncio as aioredis
 from app.models.assignment_cache import AssignmentCache
+from app.models.forest_supervisor_cache import ForestSupervisorCache 
 
 logger = logging.getLogger("assignment_consumer")
 
@@ -17,6 +18,8 @@ STREAMS = {
     "stream:agent.removed":    "_handle_removed",
     "stream:parcelle.deleted": "_handle_parcelle_deleted",
     "stream:forest.deleted":   "_handle_forest_deleted",
+    "stream:superviseur.assigned": "_handle_superviseur_assigned",  
+    "stream:superviseur.removed":  "_handle_superviseur_removed",
 }
 
 CONSUMER_GROUP = "alert-service-group"
@@ -59,8 +62,9 @@ async def _handle_assigned(
         cached.forest_id    = forest_id
         cached.agent_nom    = data.get("agent_nom")
         cached.agent_phone  = data.get("agent_phone")
-        cached.forest_name  = data.get("forest_name")        # ← NOUVEAU
-        cached.parcelle_name = data.get("parcelle_name")     # ← NOUVEAU
+        cached.agent_email  = data.get("agent_email")
+        cached.forest_name  = data.get("forest_name")        
+        cached.parcelle_name = data.get("parcelle_name")     
     else:
         session.add(AssignmentCache(
             agent_id     = agent_id,
@@ -68,8 +72,9 @@ async def _handle_assigned(
             forest_id    = forest_id,
             agent_nom    = data.get("agent_nom"),
             agent_phone  = data.get("agent_phone"),
-            forest_name  = data.get("forest_name"),          # ← NOUVEAU
-            parcelle_name = data.get("parcelle_name"),       # ← NOUVEAU
+            agent_email  = data.get("agent_email"),
+            forest_name  = data.get("forest_name"),
+            parcelle_name = data.get("parcelle_name"),
         ))
     logger.info(
         f"[CONSUMER] Agent assigné : {data.get('agent_nom')} "
@@ -122,14 +127,54 @@ async def _handle_forest_deleted(
     )
     logger.info(f"[CONSUMER] Forêt supprimée : {data.get('forest_id')}")
 
+async def _handle_superviseur_assigned(data: dict, session: AsyncSession) -> None:
+    forest_id     = uuid.UUID(data["forest_id"])
+    supervisor_id = uuid.UUID(data["superviseur_id"])
 
+    result = await session.execute(
+        select(ForestSupervisorCache).where(ForestSupervisorCache.forest_id == forest_id)
+    )
+    cached = result.scalar_one_or_none()
+
+    if cached:
+        cached.forest_name      = data.get("forest_name")
+        cached.supervisor_id    = supervisor_id
+        cached.supervisor_nom   = data.get("superviseur_nom")
+        cached.supervisor_phone = data.get("superviseur_phone")
+        cached.supervisor_email = data.get("superviseur_email")
+    else:
+        session.add(ForestSupervisorCache(
+            forest_id        = forest_id,
+            forest_name      = data.get("forest_name"),
+            supervisor_id    = supervisor_id,
+            supervisor_nom   = data.get("superviseur_nom"),
+            supervisor_phone = data.get("superviseur_phone"),
+            supervisor_email = data.get("superviseur_email"),
+        ))
+    logger.info(f"[CONSUMER] Superviseur affecté : {data.get('superviseur_nom')} → {data.get('forest_name')}")
+
+
+async def _handle_superviseur_removed(data: dict, session: AsyncSession) -> None:
+    forest_id = uuid.UUID(data["forest_id"])
+    await session.execute(
+        delete(ForestSupervisorCache).where(ForestSupervisorCache.forest_id == forest_id)
+    )
+    logger.info(f"[CONSUMER] Superviseur retiré de la forêt : {data.get('forest_id')}")
+
+
+
+    
 HANDLERS = {
     "stream:agent.assigned":   _handle_assigned,
     "stream:agent.reassigned": _handle_reassigned,
     "stream:agent.removed":    _handle_removed,
     "stream:parcelle.deleted": _handle_parcelle_deleted,
     "stream:forest.deleted":   _handle_forest_deleted,
+    "stream:superviseur.assigned": _handle_superviseur_assigned,   # ← ajouté
+    "stream:superviseur.removed":  _handle_superviseur_removed,    # ← ajouté
 }
+
+
 
 
 async def run_assignment_consumer(

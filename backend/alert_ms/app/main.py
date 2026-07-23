@@ -9,6 +9,9 @@ from app.db.database import engine, Base, AsyncSessionLocal
 from app.routers.alert_router import router as alert_router
 from app.core.redis_client import get_redis, close_redis
 from app.consumers.assignment_consumer import run_assignment_consumer
+from app.routers.analytics_router import router as analytics_router
+
+import app.models.forest_supervisor_cache
 import app.models.alert
 import app.models.assignment_cache  
 
@@ -27,6 +30,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"],
 
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 app.include_router(alert_router)
+app.include_router(analytics_router)
 
 
 @app.on_event("startup")
