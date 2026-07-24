@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     REDIS_HOST: str = "redis"
     REDIS_PORT: int = 6379
 
+    # Used for async, request-time enrichment calls (agent/supervisor/forest
+    # names & contact info) instead of duplicating a second full cache.
+    FOREST_SERVICE_URL: str = "http://forest_ms:8002"
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 
