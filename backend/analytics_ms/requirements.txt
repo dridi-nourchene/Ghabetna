@@ -8,3 +8,4 @@ python-dotenv
 redis
 alembic
 psycopg2-binary
+httpx

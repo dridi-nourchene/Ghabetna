@@ -63,6 +63,25 @@ services:
       timeout: 5s
       retries: 5
 
+  analytics_db:
+    image: postgres:15
+    container_name: analytics_db
+    environment:
+      POSTGRES_DB: analytics_db
+      POSTGRES_USER: analytics_user
+      POSTGRES_PASSWORD: analytics_pass
+    volumes:
+      - analytics_db_data:/var/lib/postgresql/data
+    ports:
+      - "5436:5432"
+    networks:
+      - ghabetna_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U analytics_user -d analytics_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   # ── REDIS ──────────────────────────────────────────────────
 
   redis:
@@ -142,6 +161,30 @@ services:
     networks:
       - ghabetna_net
 
+  analytics_ms:
+    build:
+      context: ./backend/analytics_ms
+    container_name: analytics_ms
+    environment:
+      DATABASE_URL: postgresql+asyncpg://analytics_user:analytics_pass@analytics_db:5432/analytics_db
+      DATABASE_URL_SYNC: postgresql+psycopg2://analytics_user:analytics_pass@analytics_db:5432/analytics_db
+      REDIS_URL: redis://redis:6379
+      # Async, request-time enrichment calls (agent/supervisor/forest names)
+      FOREST_SERVICE_URL: http://forest_ms:8002
+    ports:
+      - "8004:8004"
+    depends_on:
+      analytics_db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      forest_ms:
+        condition: service_started
+      alert_ms:
+        condition: service_started
+    networks:
+      - ghabetna_net
+
   gateway:
     build:
       context: ./gateway
@@ -152,12 +195,14 @@ services:
       AUTH_MS_URL: http://auth_ms:8001
       FOREST_MS_URL: http://forest_ms:8002
       ALERT_MS_URL: http://alert_ms:8003
+      ANALYTICS_MS_URL: http://analytics_ms:8004
     ports:
       - "8000:8000"
     depends_on:
       - auth_ms
       - forest_ms
       - alert_ms
+      - analytics_ms
     networks:
       - ghabetna_net
 
@@ -178,6 +223,7 @@ volumes:
   auth_db_data:
   alert_db_data:
   forest_db_data:
+  analytics_db_data:
   alert_uploads:
 # ── NETWORK ────────────────────────────────────────────────
 

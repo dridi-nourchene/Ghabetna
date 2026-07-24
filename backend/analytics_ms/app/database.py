@@ -9,7 +9,7 @@ AsyncSessionLocal = async_sessionmaker(bind=engine, class_=AsyncSession, expire_
 
 
 class Base(DeclarativeBase):
-
+    pass
 
 
 async def get_db() -> AsyncSession:
