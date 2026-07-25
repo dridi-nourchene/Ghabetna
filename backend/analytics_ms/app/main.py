@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine, Base, AsyncSessionLocal
 from app.analytics_router import router as analytics_router
 from app.core.redis_client import get_redis, close_redis
-from app.consumers.alert_consumer import run_alert_consumer
+from app.consumers.analytics_consumer import run_alert_consumer
 
 import app.alert_fact
 

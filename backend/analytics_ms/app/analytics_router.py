@@ -3,9 +3,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.database import get_db
+from app.database import get_db
 from app.core.dependencies import require_admin
-from app.analytics_.schemas import (
+from app.analytics_schemas import (
     AlertsByForestResponse, StatusTrendPoint, ForestTypeMatrixRow,
     SupervisorWorkloadResponse,
 )

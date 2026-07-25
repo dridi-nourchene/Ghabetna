@@ -18,7 +18,6 @@ class AssignmentCache(Base):
     forest_id   = Column(UUID(as_uuid=True), nullable=False, index=True)
     agent_nom   = Column(String(255), nullable=True)
     agent_phone = Column(String(30),  nullable=True)
-    agent_email = Column(String(255), nullable=True)
     
     forest_name   = Column(String(255), nullable=True)
     parcelle_name = Column(String(255), nullable=True)

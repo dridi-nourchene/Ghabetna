@@ -7,8 +7,8 @@ from alembic import context
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from app.models.alert_fact import AlertFact
-from app.db.database import Base
+from app.alert_fact import AlertFact
+from app.database import Base
 
 config = context.config
 
