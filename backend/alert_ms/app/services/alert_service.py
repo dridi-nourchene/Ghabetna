@@ -13,6 +13,9 @@ from app.models.assignment_cache import AssignmentCache
 from app.schemas.alert import AlertCreate, AlertStatusUpdate
 from app.core.config import settings
 
+from app.core.redis_client import get_redis
+from app.core.streams import STREAM_ALERT_CREATED, STREAM_ALERT_STATUS_UPDATED
+
 UPLOAD_DIR = Path("uploads/alerts")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -247,8 +250,27 @@ async def create_alert(
     )
     db.add(alert)
     await db.commit()
-    await db.refresh(alert)
+
+    # ── Publier l'événement pour analytics_ms ─────────────
+    try:
+        redis = await get_redis()
+        await redis.xadd(
+            STREAM_ALERT_CREATED,
+            {
+                "id":         str(alert.id),
+                "type":       alert.type.value,
+                "status":     alert.status.value,
+                "forest_id":  str(alert.forest_id),
+                "agent_id":   str(alert.agent_id),
+                "created_at": alert.created_at.isoformat(),
+            },
+        )
+        await db.refresh(alert)
+    except Exception as e:
+        print(f"[STREAM] Erreur publish alert.created : {e}")
+
     return await _alert_to_dict(alert, db)
+   
 
 
 # ── GET AGENT ALERTS ──────────────────────────────────────
@@ -391,7 +413,29 @@ async def update_alert_status(
         alert.commented_at       = datetime.now(timezone.utc)
 
     await db.commit()
+    alert.status = data.status
+    if data.supervisor_comment is not None:
+        alert.supervisor_comment = data.supervisor_comment
+        alert.supervisor_id      = supervisor_id
+        alert.commented_at       = datetime.now(timezone.utc)
+
+    await db.commit()
+
+    # ── Publier l'événement pour analytics_ms ─────────────
+    try:
+        redis = await get_redis()
+        await redis.xadd(
+            STREAM_ALERT_STATUS_UPDATED,
+            {
+                "id":     str(alert.id),
+                "status": alert.status.value,
+            },
+        )
+    except Exception as e:
+        print(f"[STREAM] Erreur publish alert.status_updated : {e}")
+
     result2 = await db.execute(
         select(Alert).where(Alert.id == alert_id)
     )
     return await _alert_to_dict(result2.scalar_one(), db)
+ 

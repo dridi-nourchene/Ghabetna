@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.db.database import engine, Base, AsyncSessionLocal
-from app.routers import forest_router, parcelle_router, assignment_router
+from app.routers import forest_router, parcelle_router, assignment_router, internal_router
 from app.core.redis_client import get_redis, close_redis
 from app.consumers.user_consumer import run_user_consumer
 
@@ -55,7 +55,7 @@ app.add_middleware(
 app.include_router(forest_router.router)
 app.include_router(parcelle_router.router)
 app.include_router(assignment_router.router)
-
+app.include_router(internal_router.router)
 
 # ── Lifecycle ─────────────────────────────────────────────────
 @app.on_event("startup")
