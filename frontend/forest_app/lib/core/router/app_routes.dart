@@ -22,6 +22,7 @@ import '../../features/supervisor/screens/supervisor_shell.dart';
 import '../../features/supervisor/screens/supervisor_map_screen.dart';
 import '../../features/supervisor/screens/supervisor_historique_screen.dart';
 import '../../features/supervisor/screens/supervisor_alert_detail_screen.dart';
+import '../../features/admin/screens/admin_analytics_screen.dart';
 
 class _PlaceholderScreen extends StatelessWidget {
   final String name;
@@ -144,6 +145,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path:    '/admin/settings',
             builder: (_, __) => const _PlaceholderScreen('Paramètres'),
           ),
+          GoRoute(
+          path:    '/admin/analytics',
+          builder: (_, __) => const AdminAnalyticsScreen(),
+        ),
+          
         ],
       ),
 

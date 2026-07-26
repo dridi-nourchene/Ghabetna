@@ -270,3 +270,56 @@ async def get_supervisor_workload(db: AsyncSession) -> list[dict]:
 
     results.sort(key=lambda x: x["alert_count"], reverse=True)
     return results
+
+#kpi --------------------------------------------------------------------------
+
+async def get_overview(
+    db: AsyncSession,
+    forest_id: Optional[UUID] = None,
+    type_: Optional[str] = None,
+    days: Optional[int] = None,
+) -> dict:
+    conditions = _base_conditions(forest_id, type_, days)
+
+    # ── Total alerts ───────────────────────────────────
+    total_query = select(func.count()).where(*conditions) if conditions else select(func.count())
+    total = (await db.execute(select(func.count()).select_from(AlertFact).where(*conditions))).scalar_one()
+
+    # ── Most affected forest (traiter + en_cours, rejeter exclus) ──
+    confirmed_expr = func.count(case((AlertFact.status.in_(["traiter", "en_cours"]), 1)))
+    forest_query = (
+        select(AlertFact.forest_id, confirmed_expr.label("confirmed"))
+        .where(*conditions)
+        .group_by(AlertFact.forest_id)
+        .order_by(confirmed_expr.desc())
+        .limit(1)
+    )
+    top_row = (await db.execute(forest_query)).first()
+
+    most_affected_forest_id   = None
+    most_affected_forest_name = None
+    most_affected_forest_count = 0
+
+    if top_row and top_row.confirmed > 0:
+        most_affected_forest_id   = str(top_row.forest_id)
+        most_affected_forest_count = top_row.confirmed
+        forests_map = await enrichment_client.get_forests_map({most_affected_forest_id})
+        most_affected_forest_name = forests_map.get(most_affected_forest_id, {}).get(
+            "forest_name", f"Forêt {most_affected_forest_id[:8]}"
+        )
+
+    # ── Global validation rate : traiter / (traiter + rejeter) ──
+    traiter_expr = func.count(case((AlertFact.status == "traiter", 1)))
+    rejeter_expr = func.count(case((AlertFact.status == "rejeter", 1)))
+    rate_query = select(traiter_expr.label("traiter"), rejeter_expr.label("rejeter")).where(*conditions)
+    rate_row = (await db.execute(rate_query)).one()
+    denom = (rate_row.traiter or 0) + (rate_row.rejeter or 0)
+    global_validation_rate = round((rate_row.traiter / denom) * 100, 1) if denom else 0.0
+
+    return {
+        "total_alerts":               total,
+        "most_affected_forest_id":    most_affected_forest_id,
+        "most_affected_forest_name":  most_affected_forest_name,
+        "most_affected_forest_count": most_affected_forest_count,
+        "global_validation_rate":     global_validation_rate,
+    }

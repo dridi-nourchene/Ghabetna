@@ -13,7 +13,7 @@ import redis.asyncio as aioredis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.models.alert_fact import AlertFact
+from app.alert_fact import AlertFact
 
 logger = logging.getLogger("analytics_consumer")
 

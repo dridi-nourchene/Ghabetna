@@ -59,3 +59,11 @@ class SupervisorWorkloadItem(BaseModel):
 class SupervisorWorkloadResponse(BaseModel):
     threshold: float
     items:     list[SupervisorWorkloadItem]
+
+
+class OverviewResponse(BaseModel):
+    total_alerts:               int
+    most_affected_forest_id:    Optional[str] = None
+    most_affected_forest_name:  Optional[str] = None
+    most_affected_forest_count: int = 0
+    global_validation_rate:     float

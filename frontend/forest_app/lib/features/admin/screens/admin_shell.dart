@@ -334,7 +334,13 @@ class _Sidebar extends StatelessWidget {
                   currentLocation: location,
                   expanded:        expanded,
                 ),
-
+              _SidebarItem(
+                icon:            Icons.insights_outlined,
+                label:           'Analytics',
+                route:           '/admin/analytics',
+                currentLocation: location,
+                expanded:        expanded,
+              ),
               
               ]),
             ),
