@@ -61,43 +61,6 @@ class ForestLabel extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  ForestPopup — popup hover sur la carte
-// ═══════════════════════════════════════════════════════════════
-
-class ForestPopup extends StatelessWidget {
-  final Forest       forest;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
-  final VoidCallback onClose;
-
-  const ForestPopup({
-    super.key,
-    required this.forest,
-    required this.onEdit,
-    required this.onDelete,
-    required this.onClose,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-    return Positioned(
-      left: size.width / 2 - 110,
-      top:  size.height * 0.15,
-      child: PopupCard(
-        title:    forest.name,
-        subtitle: forest.areaLabel,
-        icon:     Icons.park_outlined,
-        color:    AppColors.primaryDark,
-        onEdit:   onEdit,
-        onDelete: onDelete,
-        onClose:  onClose,
-      ),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════
 //  ForestListPanel — liste des forêts dans la sidebar
 // ═══════════════════════════════════════════════════════════════
 

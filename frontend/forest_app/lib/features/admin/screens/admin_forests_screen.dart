@@ -36,9 +36,6 @@ class _AdminForestsScreenState
   PanelMode  _panelMode  = PanelMode.list;
   String?    _expandedForestId;
 
-  // ── Hover popups ──────────────────────────────────────
-  Forest?   _hoveredForest;
-  Parcelle? _hoveredParcelle;
 
   // ── Drawing ───────────────────────────────────────────
   final List<LatLng> _drawPoints   = [];
@@ -306,7 +303,6 @@ class _AdminForestsScreenState
     );
     if (ok == true) {
       await ref.read(forestListProvider.notifier).deleteForest(f.id);
-      setState(() => _hoveredForest = null);
     }
   }
 
@@ -319,7 +315,6 @@ class _AdminForestsScreenState
       await ref
           .read(parcelleProvider.notifier)
           .deleteParcelle(p.id, p.forestId);
-      setState(() => _hoveredParcelle = null);
     }
   }
 
@@ -423,51 +418,12 @@ class _AdminForestsScreenState
           point:  LatLng(f.centroidLat!, f.centroidLng!),
           width:  160,
           height: 40,
-          child: MouseRegion(
-            cursor:  SystemMouseCursors.click,
-            onEnter: (_) => setState(() {
-              _hoveredForest   = f;
-              _hoveredParcelle = null;
-            }),
-            onExit: (_) =>
-                setState(() => _hoveredForest = null),
-            child: GestureDetector(
-              onTap: () => setState(() {
-                _hoveredForest =
-                    _hoveredForest?.id == f.id ? null : f;
-                _hoveredParcelle = null;
-              }),
-              child: ForestLabel(
-                  name: f.name, isEditing: isEditing),
-            ),
+          child: IgnorePointer(
+            child: ForestLabel(name: f.name, isEditing: isEditing),
           ),
         );
       }).toList();
 
-  List<Marker> _buildParcelleMarkers(ParcelleState ps) {
-    final markers = <Marker>[];
-    for (final fId in ps.byForest.keys) {
-      for (final p in ps.forForest(fId)) {
-        if (p.centroidLat == null) continue;
-        markers.add(Marker(
-          point:  LatLng(p.centroidLat!, p.centroidLng!),
-          width:  130,
-          height: 32,
-          child: MouseRegion(
-            cursor:  SystemMouseCursors.click,
-            onEnter: (_) => setState(() {
-              _hoveredParcelle = p;
-              _hoveredForest   = null;
-            }),
-            onExit: (_) =>
-                setState(() => _hoveredParcelle = null),
-            child: ParcelleLabel(name: p.name),
-          ),
-        ));
-      }
-    }
-    return markers;
-  }
 
   // ══════════════════════════════════════════════════════
   //  Panel content
@@ -632,16 +588,6 @@ class _AdminForestsScreenState
           initialZoom:   forestInitialZoom,
           minZoom: 4.0,
           maxZoom: 19.0,
-          onTap: (tapPos, pt) {
-            _onMapTap(tapPos, pt);
-            if (_hoveredForest != null ||
-                _hoveredParcelle != null) {
-              setState(() {
-                _hoveredForest   = null;
-                _hoveredParcelle = null;
-              });
-            }
-          },
         ),
         children: [
           TileLayer(
@@ -681,33 +627,11 @@ class _AdminForestsScreenState
               );
             }).toList()),
           MarkerLayer(markers: _buildForestMarkers(forests)),
-          MarkerLayer(markers: _buildParcelleMarkers(ps)),
           const RichAttributionWidget(attributions: [
             TextSourceAttribution('© CartoDB © OpenStreetMap'),
           ]),
         ],
       ),
-
-      // ── Popup forêt ───────────────────────────────────
-      if (_hoveredForest != null &&
-          _hoveredForest!.centroidLat != null)
-        ForestPopup(
-          forest:   _hoveredForest!,
-          onEdit:   () => _openEditForest(_hoveredForest!),
-          onDelete: () => _confirmDeleteForest(_hoveredForest!),
-          onClose:  () => setState(() => _hoveredForest = null),
-        ),
-
-      // ── Popup parcelle ────────────────────────────────
-      if (_hoveredParcelle != null &&
-          _hoveredParcelle!.centroidLat != null)
-        ParcellePopup(
-          parcelle: _hoveredParcelle!,
-          onDelete: () =>
-              _confirmDeleteParcelle(_hoveredParcelle!),
-          onClose:  () =>
-              setState(() => _hoveredParcelle = null),
-        ),
 
       // ── Sidebar droite ────────────────────────────────
       Positioned(

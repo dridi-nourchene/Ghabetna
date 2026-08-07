@@ -1,0 +1,23 @@
+{
+  "arrete_chasse_2025_2026.md": {
+    "source": "Arrêté du 27 août 2025 (JORT n° 107 du 29 août 2025)",
+    "source_id": "arrete_2025",
+    "rang_normatif": "arrete",
+    "rang_poids": 2,
+    "validite": "saison_2025_2026"
+  },
+  "code_forestier_chasse.md": {
+    "source": "Code forestier (loi n° 88-20 du 13 avril 1988)",
+    "source_id": "code_forestier",
+    "rang_normatif": "loi",
+    "rang_poids": 1,
+    "validite": "permanent"
+  },
+  "loi_69_33_armes.md": {
+    "source": "Loi n° 69-33 du 12 juin 1969 (armes)",
+    "source_id": "loi_69_33",
+    "rang_normatif": "loi",
+    "rang_poids": 1,
+    "validite": "permanent"
+  }
+}

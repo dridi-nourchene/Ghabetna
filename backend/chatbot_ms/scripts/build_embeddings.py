@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+scripts/build_embeddings.py — ETAPES 1 et 2 (processus TORCH)
+==============================================================
+    Etape 1 : chunking  -> data/index/chunks.json
+    Etape 2 : embedding -> data/index/vecteurs.npy
+
+Ce processus charge torch (via sentence-transformers) et RIEN D'AUTRE.
+Il n'importe jamais chromadb.
+
+POURQUOI CETTE SEPARATION :
+    torch et hnswlib (le moteur d'index de ChromaDB) embarquent chacun leur
+    propre runtime OpenMP. Charges dans le MEME processus sous Windows, ils
+    entrent en collision des le premier calcul vectoriel de collection.add()
+    et le processus est tue par le systeme, sans trace Python.
+    En separant, les deux librairies ne se rencontrent jamais.
+
+    python -m scripts.build_embeddings
+"""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from rag import config
+from rag.chunker import chunker_corpus
+from rag.indexer import embedder
+
+if __name__ == "__main__":
+    forcer = "--forcer" in sys.argv
+
+    print(f"\n  python     : {sys.version.split()[0]}")
+    print(f"  plateforme : {sys.platform}")
+
+    print("\n=== ETAPE 1 : CHUNKING ===")
+    chunks = chunker_corpus(verbeux=True)
+    if not chunks:
+        print(f"\nERREUR : aucun chunk. Verifie {config.CORPUS_DIR}")
+        sys.exit(1)
+
+    print(f"\n=== ETAPE 2 : EMBEDDING ({config.MODELE_EMBEDDING}) ===\n")
+    vecteurs = embedder(chunks, forcer=forcer)
+
+    print(f"\n  OK : {vecteurs.shape[0]} vecteurs de {vecteurs.shape[1]} dim.")
+    print("\n  Suite :  python -m scripts.build_stores\n")

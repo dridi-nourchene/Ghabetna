@@ -3,23 +3,35 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/app_card.dart';
+import '../providers/dashboard_stats_provider.dart';
 
-
-// ═══════════════════════════════════════════════════════════════
-//  AdminDashboard
-// ═══════════════════════════════════════════════════════════════
-
-class AdminDashboard extends ConsumerWidget {
+class AdminDashboard extends ConsumerStatefulWidget {
   const AdminDashboard({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AdminDashboard> createState() => _AdminDashboardState();
+}
+
+class _AdminDashboardState extends ConsumerState<AdminDashboard> {
+  String _selectedKpi = 'active_users'; // sélectionné par défaut
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(dashboardStatsProvider.notifier).load();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(dashboardStatsProvider);
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── En-tête page ────────────────────────────────────
           const Text('Dashboard',
               style: TextStyle(
                   fontSize: 20,
@@ -31,14 +43,15 @@ class AdminDashboard extends ConsumerWidget {
               style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
           const SizedBox(height: 20),
 
-          // ── Stat cards ──────────────────────────────────────
-          const _StatsRow(),
+          _StatsRow(
+            stats: state.stats,
+            isLoading: state.isLoading,
+            selectedKpi: _selectedKpi,
+            onSelect: (key) => setState(() => _selectedKpi = key),
+          ),
           const SizedBox(height: 18),
 
-
-
-          // ── Ligne du bas : utilisateurs + alertes ───────────
-          const _BottomRow(),
+          _BottomRow(stats: state.stats, isLoading: state.isLoading),
         ],
       ),
     );
@@ -46,171 +59,181 @@ class AdminDashboard extends ConsumerWidget {
 }
 
 // ───────────────────────────────────────────────────────────────
-//  STAT CARDS
+//  STAT CARDS — sélecteur, "Utilisateurs actifs" en 1ère position
 // ───────────────────────────────────────────────────────────────
-
 class _StatsRow extends StatelessWidget {
-  const _StatsRow();
+  final DashboardStats stats;
+  final bool isLoading;
+  final String selectedKpi;
+  final ValueChanged<String> onSelect;
+
+  const _StatsRow({
+    required this.stats,
+    required this.isLoading,
+    required this.selectedKpi,
+    required this.onSelect,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, constraints) {
-      return Row(
-        children: [
-          // Card verte (primary)
-          
-          Expanded(
-            flex: 10,
-            child: _StatCard.white(
-              label: 'Comptes en attente',
-              value: '8',
-              sub: 'À activer par email',
-              subColor: AppColors.warning,
-              onTap: () => context.go('/admin/users'),
-            ),
+    final v = (int n) => isLoading ? '—' : '$n';
+
+    return Row(
+      children: [
+        Expanded(
+          flex: 12,
+          child: _StatCard(
+            kpiKey: 'active_users',
+            label: 'Utilisateurs actifs',
+            value: v(stats.activeUsers),
+            sub: 'Comptes activés',
+            isSelected: selectedKpi == 'active_users',
+            onTap: () => onSelect('active_users'),
+            onArrowTap: () => context.go('/admin/users'),
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            flex: 12,
-            child: _StatCard.primary(
-              label: 'Utilisateurs actifs',
-              value: '1',
-              sub: '↑ Augmenté ce mois',
-              onTap: () => context.go('/admin/users'),
-            ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          flex: 10,
+          child: _StatCard(
+            kpiKey: 'pending_users',
+            label: 'Comptes en attente',
+            value: v(stats.pendingUsers),
+            sub: 'À activer par email',
+            subColor: AppColors.warning,
+            isSelected: selectedKpi == 'pending_users',
+            onTap: () => onSelect('pending_users'),
+            onArrowTap: () => context.go('/admin/users'),
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            flex: 10,
-            child: _StatCard.white(
-              label: 'Forêts gérées',
-              value: '12',
-              sub: ' ',
-              subColor: AppColors.textMuted,
-              onTap: () => context.go('/admin/forests'),
-            ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          flex: 10,
+          child: _StatCard(
+            kpiKey: 'forests',
+            label: 'Forêts gérées',
+            value: v(stats.forestsCount),
+            sub: ' ',
+            subColor: AppColors.textMuted,
+            isSelected: selectedKpi == 'forests',
+            onTap: () => onSelect('forests'),
+            onArrowTap: () => context.go('/admin/forests'),
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            flex: 10,
-            child: _StatCard.white(
-              label: 'Parcelles gérées',
-              value: '5',
-              sub: ' ',
-              subColor: AppColors.danger,
-              onTap: () => context.go('/admin/parcels'),
-            ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          flex: 10,
+          child: _StatCard(
+            kpiKey: 'parcelles',
+            label: 'Parcelles gérées',
+            value: v(stats.parcellesCount),
+            sub: ' ',
+            subColor: AppColors.textMuted,
+            isSelected: selectedKpi == 'parcelles',
+            onTap: () => onSelect('parcelles'),
+            // FIX : /admin/parcels n'existe pas — parcelles vivent
+            // dans l'onglet "Parcelles" de /admin/forests
+            onArrowTap: () => context.go('/admin/forests'),
           ),
-        ],
-      );
-    });
+        ),
+      ],
+    );
   }
 }
 
-class _StatCard extends StatelessWidget {
+class _StatCard extends StatefulWidget {
+  final String kpiKey;
   final String label;
   final String value;
   final String sub;
   final Color? subColor;
-  final bool isPrimary;
-  final VoidCallback? onTap;
+  final bool isSelected;
+  final VoidCallback onTap;
+  final VoidCallback onArrowTap;
 
-  const _StatCard._({
+  const _StatCard({
+    required this.kpiKey,
     required this.label,
     required this.value,
     required this.sub,
-    required this.isPrimary,
+    required this.isSelected,
+    required this.onTap,
+    required this.onArrowTap,
     this.subColor,
-    this.onTap,
   });
 
-  factory _StatCard.primary({
-    required String label,
-    required String value,
-    required String sub,
-    VoidCallback? onTap,
-  }) =>
-      _StatCard._(
-          label: label,
-          value: value,
-          sub: sub,
-          isPrimary: true,
-          onTap: onTap);
+  @override
+  State<_StatCard> createState() => _StatCardState();
+}
 
-  factory _StatCard.white({
-    required String label,
-    required String value,
-    required String sub,
-    Color? subColor,
-    VoidCallback? onTap,
-  }) =>
-      _StatCard._(
-          label: label,
-          value: value,
-          sub: sub,
-          isPrimary: false,
-          subColor: subColor,
-          onTap: onTap);
+class _StatCardState extends State<_StatCard> {
+  bool _hovering = false;
 
   @override
   Widget build(BuildContext context) {
-    final bg = isPrimary ? AppColors.primaryDark : AppColors.bgCard;
-    final labelColor =
-        isPrimary ? Colors.white.withOpacity(0.55) : AppColors.textSecondary;
-    final valueColor = isPrimary ? Colors.white : AppColors.textPrimary;
-    final resolvedSubColor = isPrimary
-        ? Colors.white.withOpacity(0.5)
-        : (subColor ?? AppColors.textMuted);
-    final arrowBg = isPrimary
-        ? Colors.white.withOpacity(0.15)
-        : AppColors.primaryLight;
-    final arrowColor =
-        isPrimary ? Colors.white.withOpacity(0.7) : AppColors.primaryMid;
+    final isSelected = widget.isSelected;
 
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isPrimary ? AppColors.primaryDark : AppColors.border,
-            width: 0.5,
+    // Priorité : sélectionné > survolé > défaut
+    final bg = isSelected
+        ? AppColors.primaryDark
+        : _hovering
+            ? AppColors.primaryLight
+            : AppColors.bgCard;
+
+    final borderColor = isSelected
+        ? AppColors.primaryDark
+        : _hovering
+            ? AppColors.primaryMid.withOpacity(0.4)
+            : AppColors.border;
+
+    final labelColor = isSelected ? Colors.white.withOpacity(0.55) : AppColors.textSecondary;
+    final valueColor = isSelected ? Colors.white : AppColors.textPrimary;
+    final resolvedSubColor =
+        isSelected ? Colors.white.withOpacity(0.5) : (widget.subColor ?? AppColors.textMuted);
+    final arrowBg = isSelected ? Colors.white.withOpacity(0.15) : AppColors.primaryLight;
+    final arrowColor = isSelected ? Colors.white.withOpacity(0.7) : AppColors.primaryMid;
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit:  (_) => setState(() => _hovering = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: borderColor, width: 0.5),
           ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Text(label,
-                      style: TextStyle(fontSize: 11, color: labelColor)),
-                ),
-                Container(
-                  width: 26, height: 26,
-                  decoration: BoxDecoration(
-                    color: arrowBg,
-                    shape: BoxShape.circle,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                      child: Text(widget.label, style: TextStyle(fontSize: 11, color: labelColor))),
+                  // Flèche = navigation, tap isolé du reste de la card
+                  GestureDetector(
+                    onTap: widget.onArrowTap,
+                    child: Container(
+                      width: 26, height: 26,
+                      decoration: BoxDecoration(color: arrowBg, shape: BoxShape.circle),
+                      child: Icon(Icons.arrow_outward, size: 13, color: arrowColor),
+                    ),
                   ),
-                  child: Icon(Icons.arrow_outward,
-                      size: 13, color: arrowColor),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(value,
-                style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w700,
-                    color: valueColor,
-                    height: 1)),
-            const SizedBox(height: 8),
-            Text(sub,
-                style: TextStyle(fontSize: 11, color: resolvedSubColor)),
-          ],
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(widget.value,
+                  style: TextStyle(
+                      fontSize: 28, fontWeight: FontWeight.w700, color: valueColor, height: 1)),
+              const SizedBox(height: 8),
+              Text(widget.sub, style: TextStyle(fontSize: 11, color: resolvedSubColor)),
+            ],
+          ),
         ),
       ),
     );
@@ -222,30 +245,29 @@ class _StatCard extends StatelessWidget {
 // ───────────────────────────────────────────────────────────────
 
 class _BottomRow extends StatelessWidget {
-  const _BottomRow();
+  final DashboardStats stats;
+  final bool isLoading;
+  const _BottomRow({required this.stats, required this.isLoading});
 
   @override
   Widget build(BuildContext context) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(child: _UsersCard()),
+        Expanded(child: _RecentUsersCard(users: stats.recentUsers, isLoading: isLoading)),
         const SizedBox(width: 12),
-        Expanded(child: _AlertsCard()),
+        Expanded(child: _RiskForestsCard(forests: stats.riskForests, isLoading: isLoading)),
       ],
     );
   }
 }
 
-// ── Users card ────────────────────────────────────────────────
+// ── 5 derniers utilisateurs ──────────────────────────────────
 
-class _UsersCard extends StatelessWidget {
-  static const _users = [
-    _UserRow(initials: 'KA', name: 'arbi Mohamed ',   role: 'Superviseur · Forêt ishkel',    status: UserStatus.active),
-    _UserRow(initials: 'SB', name: '',    role: '',         status: UserStatus.pending),
-    _UserRow(initials: 'YM', name: '', role: '',     status: UserStatus.active),
-    _UserRow(initials: 'NL', name: '',   role: '',  status: UserStatus.newUser),
-  ];
+class _RecentUsersCard extends StatelessWidget {
+  final List<RecentUser> users;
+  final bool isLoading;
+  const _RecentUsersCard({required this.users, required this.isLoading});
 
   @override
   Widget build(BuildContext context) {
@@ -258,78 +280,71 @@ class _UsersCard extends StatelessWidget {
             onLinkTap: () => context.go('/admin/users'),
           ),
           const SizedBox(height: 12),
-          ..._users,
+          if (isLoading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            )
+          else if (users.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Center(
+                child: Text('Aucun utilisateur pour l\'instant',
+                    style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+              ),
+            )
+          else
+            ...users.map((u) => _UserRow(user: u)),
         ],
       ),
     );
   }
 }
 
-enum UserStatus { active, pending, newUser }
-
 class _UserRow extends StatelessWidget {
-  final String initials;
-  final String name;
-  final String role;
-  final UserStatus status;
+  final RecentUser user;
+  const _UserRow({required this.user});
 
-  const _UserRow({
-    required this.initials,
-    required this.name,
-    required this.role,
-    required this.status,
-  });
-
-  Color get _avatarBg => switch (status) {
-        UserStatus.active  => AppColors.successBg,
-        UserStatus.pending => AppColors.warningBg,
-        UserStatus.newUser => AppColors.infoBg,
+  (Color, Color) get _avatarColors => switch (user.status) {
+        'active'   => (AppColors.successBg, AppColors.primaryMid),
+        'inactive' => (AppColors.warningBg, const Color(0xFF92400E)),
+        'banned'   => (AppColors.dangerBg,  AppColors.danger),
+        _          => (AppColors.infoBg,    AppColors.info),
       };
 
-  Color get _avatarFg => switch (status) {
-        UserStatus.active  => AppColors.primaryMid,
-        UserStatus.pending => const Color(0xFF92400E),
-        UserStatus.newUser => AppColors.info,
-      };
-
-  StatusPill get _pill => switch (status) {
-        UserStatus.active  => StatusPill.active(),
-        UserStatus.pending => StatusPill.pending(),
-        UserStatus.newUser => StatusPill.newUser(),
+  Widget get _pill => switch (user.status) {
+        'active'   => StatusPill.active(),
+        'inactive' => StatusPill.pending(),
+        'banned'   => const StatusPill(label: 'Banni', bg: AppColors.dangerBg, fg: AppColors.danger),
+        _          => StatusPill.newUser(),
       };
 
   @override
   Widget build(BuildContext context) {
+    final (bg, fg) = _avatarColors;
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: const BoxDecoration(
-        border: Border(
-            top: BorderSide(color: AppColors.borderLight, width: 0.5)),
+        border: Border(top: BorderSide(color: AppColors.borderLight, width: 0.5)),
       ),
       child: Row(
         children: [
           CircleAvatar(
             radius: 14,
-            backgroundColor: _avatarBg,
-            child: Text(initials,
-                style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    color: _avatarFg)),
+            backgroundColor: bg,
+            child: Text(user.initials,
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: fg)),
           ),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(name,
+                Text(user.fullName,
                     style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: AppColors.textPrimary)),
-                Text(role,
-                    style: const TextStyle(
-                        fontSize: 10, color: AppColors.textMuted)),
+                        fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.textPrimary)),
+                Text(user.roleLabel,
+                    style: const TextStyle(fontSize: 10, color: AppColors.textMuted)),
               ],
             ),
           ),
@@ -340,31 +355,12 @@ class _UserRow extends StatelessWidget {
   }
 }
 
-// ── Alerts card ───────────────────────────────────────────────
+// ── Top 5 forêts à risque (agrégé, sans détail d'alerte) ────────
 
-class _AlertsCard extends StatelessWidget {
-  static const _alerts = [
-    _AlertRow(
-      color: AppColors.danger,
-      text: 'Incendie détecté ',
-      time: 'Il y a 14 min · Agent A12 · Photo jointe',
-    ),
-    _AlertRow(
-      color: AppColors.danger,
-      text: '',
-      time: '',
-    ),
-    _AlertRow(
-      color: AppColors.warning,
-      text: '',
-      time: '',
-    ),
-    _AlertRow(
-      color: AppColors.success,
-      text: 'Alerte résolue ',
-      time: "Aujourd'hui 09:17 · Clôturée",
-    ),
-  ];
+class _RiskForestsCard extends StatelessWidget {
+  final List<RiskForest> forests;
+  final bool isLoading;
+  const _RiskForestsCard({required this.forests, required this.isLoading});
 
   @override
   Widget build(BuildContext context) {
@@ -372,36 +368,47 @@ class _AlertsCard extends StatelessWidget {
       child: Column(
         children: [
           AppCardHeader(
-            title: 'Alertes récentes',
-            linkLabel: 'Voir toutes →',
-            onLinkTap: () => context.go('/admin/alerts'),
+            title: 'Top forêts à risque',
+            linkLabel: 'Analytics →',
+            onLinkTap: () => context.go('/admin/analytics'),
           ),
           const SizedBox(height: 12),
-          ..._alerts,
+          if (isLoading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            )
+          else if (forests.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Center(
+                child: Text('Aucune alerte enregistrée',
+                    style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+              ),
+            )
+          else
+            ...forests.map((f) => _RiskForestRow(forest: f)),
         ],
       ),
     );
   }
 }
 
-class _AlertRow extends StatelessWidget {
-  final Color color;
-  final String text;
-  final String time;
-
-  const _AlertRow({
-    required this.color,
-    required this.text,
-    required this.time,
-  });
+class _RiskForestRow extends StatelessWidget {
+  final RiskForest forest;
+  const _RiskForestRow({required this.forest});
 
   @override
   Widget build(BuildContext context) {
+    final total = forest.rejectedCount + forest.confirmedCount;
+    final riskColor = forest.rejectedCount > forest.confirmedCount
+        ? AppColors.danger
+        : (forest.rejectedCount > 0 ? AppColors.warning : AppColors.success);
+
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: const BoxDecoration(
-        border: Border(
-            top: BorderSide(color: AppColors.borderLight, width: 0.5)),
+        border: Border(top: BorderSide(color: AppColors.borderLight, width: 0.5)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -409,25 +416,27 @@ class _AlertRow extends StatelessWidget {
           Container(
             width: 8, height: 8,
             margin: const EdgeInsets.only(top: 3),
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            decoration: BoxDecoration(color: riskColor, shape: BoxShape.circle),
           ),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(text,
+                Text(forest.forestName,
                     style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: AppColors.textPrimary)),
+                        fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.textPrimary)),
                 const SizedBox(height: 2),
-                Text(time,
-                    style: const TextStyle(
-                        fontSize: 10, color: AppColors.textMuted)),
+                Text(
+                  '${forest.rejectedCount} rejetées · ${forest.confirmedCount} confirmées/en cours',
+                  style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
+                ),
               ],
             ),
           ),
+          Text('$total',
+              style: const TextStyle(
+                  fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         ],
       ),
     );
