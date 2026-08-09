@@ -1,6 +1,6 @@
 {
-  "empreinte": "38950609dc441d7afb7c70a64d849ad85f0f974a0a039d902dc9d59dba32494a",
+  "empreinte": "889e5496fd67483d5d1327730e2f9e313cee286e7f4c64934482d6d0308085cb",
   "modele": "BAAI/bge-m3",
   "dimension": 1024,
-  "nb_chunks": 160
+  "nb_chunks": 170
 }

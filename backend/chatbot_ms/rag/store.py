@@ -3,29 +3,28 @@
 """
 rag/store.py — MAGASIN DE VECTEURS
 ===================================
-Deux backends interchangeables, meme interface :
+Recherche vectorielle EXACTE par produit scalaire.
 
-    NumpyStore   recherche EXACTE par produit scalaire. Aucune dependance
-                 native, aucun index a construire : les vecteurs sont deja
-                 dans vecteurs.npy et les textes dans chunks.json.
+POURQUOI PAS DE BASE VECTORIELLE :
+    170 chunks x 1024 dimensions = une matrice de 700 Ko.
+    Avec les corpus camper et beekeeper : ~500 chunks, 2 Mo.
 
-    ChromaStore  base vectorielle avec index HNSW (approximatif).
+    La recherche se reduit a UNE multiplication matricielle :
+        scores = vecteurs @ question        ->  ~0.1 ms, resultat EXACT
 
-POURQUOI NUMPY EST LE DEFAUT ICI :
-    160 chunks x 1024 dimensions = une matrice de 640 Ko. La recherche se
-    reduit a UNE multiplication matricielle : environ 0.3 ms, et le
-    resultat est EXACT.
+    Un index type HNSW est un algorithme APPROXIMATIF qui devient utile
+    quand on combine un tres gros corpus ET un debit de requetes eleve.
+    Aucune des deux conditions n'est reunie ici. A cette echelle il serait
+    plus lent que le calcul direct, tout en ajoutant une approximation et
+    une dependance native compilee.
 
-    HNSW (le moteur de ChromaDB) est un index APPROXIMATIF concu pour des
-    millions de vecteurs. En dessous de ~50 000 chunks il est plus lent que
-    le calcul direct, tout en introduisant une approximation et une
-    dependance native compilee.
+    Ordre de grandeur a retenir : la recherche coute 0.1 ms, l'appel au LLM
+    coute 2 a 5 secondes. La recherche represente 0.005 % du temps total :
+    elle n'est JAMAIS le goulot d'etranglement.
 
-    Ordre de grandeur a retenir : la recherche coute 0.3 ms, l'appel au LLM
-    coute 2 a 5 secondes. La recherche represente 0.01 % du temps total.
-    Elle n'est JAMAIS le goulot d'etranglement.
-
-    Bascule vers ChromaDB : config.BACKEND = "chroma"
+Cette classe isole le "comment on cherche" du "comment on classe"
+(retriever.py). Si le corpus atteignait un jour des centaines de milliers
+de chunks, seul ce fichier serait a reecrire.
 """
 
 from __future__ import annotations
@@ -37,14 +36,10 @@ import numpy as np
 from . import config
 
 
-# ============================================================================
-# BACKEND NUMPY — recherche exacte
-# ============================================================================
-
 class NumpyStore:
     """
-    Lit directement vecteurs.npy et chunks.json.
-    Rien a construire : ces deux fichiers sont produits par l'etape 2.
+    Lit directement vecteurs.npy et chunks.json produits par l'etape 2.
+    Rien a construire : ces deux fichiers SONT le magasin.
     """
 
     def __init__(self):
@@ -82,16 +77,15 @@ class NumpyStore:
 
         Les vecteurs ont ete normalises a l'indexation (norme = 1), donc le
         PRODUIT SCALAIRE est exactement le cosinus. Une seule multiplication
-        matrice-vecteur suffit : self.vecteurs @ v.
+        matrice-vecteur suffit.
         """
         v = np.asarray(vecteur, dtype=np.float32)
-        scores = self.vecteurs @ v            # (160, 1024) x (1024,) -> (160,)
+        scores = self.vecteurs @ v          # (170, 1024) x (1024,) -> (170,)
 
-        # Filtrage par domaine : on ecarte les chunks des autres corpus
-        # (camper, apiculture, app) en mettant leur score a -inf.
+        # Filtrage par domaine : les chunks des autres corpus (camper,
+        # beekeeper, app) sont ecartes en mettant leur score a -inf.
         if domaine:
-            masque = np.array(
-                [m.get("domaine") == domaine for m in self.metas])
+            masque = np.array([m.get("domaine") == domaine for m in self.metas])
             scores = np.where(masque, scores, -np.inf)
 
         # argpartition trouve les k meilleurs sans trier tout le tableau,
@@ -115,50 +109,3 @@ class NumpyStore:
             if i is not None:
                 sortie[cid] = (self.docs[i], self.metas[i])
         return sortie
-
-
-# ============================================================================
-# BACKEND CHROMADB
-# ============================================================================
-
-class ChromaStore:
-    """Meme interface, appuyee sur une collection ChromaDB persistante."""
-
-    def __init__(self):
-        import chromadb
-        client = chromadb.PersistentClient(path=str(config.CHROMA_DIR))
-        self.collection = client.get_collection(config.NOM_COLLECTION)
-
-    def count(self) -> int:
-        return self.collection.count()
-
-    def query(self, vecteur, k: int, domaine: str | None = None) -> list[dict]:
-        res = self.collection.query(
-            query_embeddings=[list(vecteur)],
-            n_results=k,
-            where={"domaine": domaine} if domaine else None,
-        )
-        # ChromaDB renvoie une DISTANCE cosinus (0 = identique).
-        # On la convertit en similarite : 1 - distance.
-        return [
-            {"id": i, "texte": d, "meta": m, "score": 1 - dist, "rang": r}
-            for r, (i, d, m, dist) in enumerate(zip(
-                res["ids"][0], res["documents"][0],
-                res["metadatas"][0], res["distances"][0]), start=1)
-        ]
-
-    def get(self, ids: list[str]) -> dict[str, tuple[str, dict]]:
-        res = self.collection.get(ids=ids)
-        return {i: (d, m) for i, d, m in
-                zip(res["ids"], res["documents"], res["metadatas"])}
-
-
-# ============================================================================
-# FABRIQUE
-# ============================================================================
-
-def ouvrir_store():
-    """Instancie le backend choisi dans config.BACKEND."""
-    if config.BACKEND == "chroma":
-        return ChromaStore()
-    return NumpyStore()

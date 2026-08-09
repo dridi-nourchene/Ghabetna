@@ -7,14 +7,12 @@ scripts/build_embeddings.py — ETAPES 1 et 2 (processus TORCH)
     Etape 2 : embedding -> data/index/vecteurs.npy
 
 Ce processus charge torch (via sentence-transformers) et RIEN D'AUTRE.
-Il n'importe jamais chromadb.
+C'est le seul processus lourd du pipeline.
 
 POURQUOI CETTE SEPARATION :
-    torch et hnswlib (le moteur d'index de ChromaDB) embarquent chacun leur
-    propre runtime OpenMP. Charges dans le MEME processus sous Windows, ils
-    entrent en collision des le premier calcul vectoriel de collection.add()
-    et le processus est tue par le systeme, sans trace Python.
-    En separant, les deux librairies ne se rencontrent jamais.
+    l'embedding est l'etape lente (environ 11 minutes sur CPU). En l'isolant
+    dans son propre processus, avec vecteurs.npy comme resultat sur disque,
+    l'etape 3 se rejoue en quelques secondes sans recharger le modele.
 
     python -m scripts.build_embeddings
 """

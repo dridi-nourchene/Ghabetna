@@ -3,7 +3,7 @@
 """
 rag/retriever.py — ETAPE 5 : RECHERCHE HYBRIDE
 ===============================================
-    5a. recherche DENSE   (ChromaDB)  -> le SENS
+    5a. recherche DENSE   (store.py)  -> le SENS
     5b. recherche LEXICALE (BM25)     -> les MOTS EXACTS
     5c. fusion RRF + deduplication    -> top-5 envoye au LLM
 
@@ -20,7 +20,8 @@ from sentence_transformers import SentenceTransformer
 
 from . import config
 from .indexer import tokeniser   # MEME tokenisation qu'a l'indexation
-from .store import ouvrir_store
+from .store import NumpyStore
+from .synonymes import enrichir
 
 
 class Retriever:
@@ -31,9 +32,8 @@ class Retriever:
         # retrouve plus rien, sans lever la moindre erreur.
         self.modele = SentenceTransformer(config.MODELE_EMBEDDING)
 
-        # Le magasin de vecteurs est choisi par config.BACKEND :
-        # "numpy" (defaut, recherche exacte) ou "chroma".
-        self.store = ouvrir_store()
+        # Magasin de vecteurs : recherche exacte par produit scalaire.
+        self.store = NumpyStore()
 
         if not config.BM25_FILE.exists():
             raise FileNotFoundError(
@@ -100,7 +100,12 @@ class Retriever:
           "chasser a Ain Draham"            -> art. 12 Jendouba (sans accents)
           "chausseurs permis de chasse"     -> art. 176 du code forestier
         """
-        scores = self.bm25.get_scores(tokeniser(question))
+        # EXPANSION DE REQUETE, cote BM25 uniquement.
+        # L'utilisateur dit "prix", le texte officiel dit "redevance
+        # domaniale" : sans pont lexical, aucun montant chiffre ne remonte.
+        # On n'applique PAS l'expansion au dense : ajouter des mots
+        # deplacerait son vecteur vers une moyenne floue.
+        scores = self.bm25.get_scores(tokeniser(enrichir(question)))
 
         # tri decroissant, on ecarte les scores nuls (aucun mot en commun)
         ordre = sorted(range(len(scores)), key=lambda i: -scores[i])[:k * 3]

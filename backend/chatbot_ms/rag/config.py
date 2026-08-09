@@ -20,7 +20,6 @@ CORPUS_DIR = DATA_DIR / "corpus"      # data/corpus/<domaine>/*.md  -> SOURCE
 INDEX_DIR = DATA_DIR / "index"        # genere -> a mettre dans .gitignore
 
 CHUNKS_FILE = INDEX_DIR / "chunks.json"
-CHROMA_DIR = INDEX_DIR / "chroma_db"
 BM25_FILE = INDEX_DIR / "bm25.pkl"
 
 # ============================================================================
@@ -41,24 +40,6 @@ PREFIXE_PASSAGE = os.getenv("PREFIXE_PASSAGE", "")
 PREFIXE_QUERY = os.getenv("PREFIXE_QUERY", "")
 
 # ============================================================================
-# MAGASIN DE VECTEURS
-# ============================================================================
-# "numpy"  : recherche EXACTE par produit scalaire. Aucune dependance native.
-#            Optimal en dessous de ~50 000 chunks : plus rapide que HNSW,
-#            resultat exact, rien a installer. C'est le defaut.
-# "chroma" : base vectorielle avec index HNSW (approximatif), utile a partir
-#            de centaines de milliers de chunks.
-BACKEND = os.getenv("BACKEND", "numpy")
-
-# ============================================================================
-# CHROMADB (utilise uniquement si BACKEND == "chroma")
-# ============================================================================
-# UNE SEULE collection pour tous les domaines (chasse, camping, apiculture,
-# app). On les distingue par la metadonnee "domaine" : filtrage gratuit,
-# une seule base a gerer, un seul modele charge en memoire.
-NOM_COLLECTION = "ghabetna"
-
-# ============================================================================
 # CHUNKING
 # ============================================================================
 TAILLE_MAX_CHUNK = 1500      # au-dela : sous-decoupage par paragraphe
@@ -69,7 +50,11 @@ TAILLE_MIN_ALERTE = 200      # en dessous : chunk signale comme court
 # ============================================================================
 TOP_K_DENSE = 20             # candidats de la recherche vectorielle
 TOP_K_BM25 = 20              # candidats de la recherche lexicale
-TOP_K_FINAL = 5              # chunks reellement envoyes au LLM
+TOP_K_FINAL = 8              # chunks reellement envoyes au LLM
+# 8 et non 5 : les questions a reponse composite ("prix du permis" = art. 2
+# + art. 3 ; "que risque-t-on" = art. 193 + 134 bis + 209) ont besoin de
+# plusieurs articles. Le cout est negligeable : ~400 tokens de contexte en
+# plus, contre le risque de tronquer la reponse.
 K_RRF = 60                   # constante du Reciprocal Rank Fusion
 
 # ============================================================================

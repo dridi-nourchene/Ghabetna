@@ -5,17 +5,15 @@ scripts/build_index.py — INDEXATION COMPLETE
 =============================================
 Une seule commande, mais DEUX PROCESSUS separes :
 
-    processus 1 (torch)    : chunking + embedding  -> vecteurs.npy
-    processus 2 (chromadb) : ChromaDB + BM25
+    processus 1 (torch)  : chunking + embedding -> chunks.json, vecteurs.npy
+    processus 2 (leger)  : index BM25          -> bm25.pkl
 
 Cette separation n'est pas un contournement, c'est l'architecture correcte :
 l'embedding produit des vecteurs, l'indexation les consomme. Ce sont deux
 jobs distincts.
 
-Elle est aussi NECESSAIRE sous Windows : torch et hnswlib (moteur d'index
-de ChromaDB) embarquent chacun leur runtime OpenMP. Dans un meme processus,
-ils entrent en collision au premier collection.add() et le processus est tue
-par le systeme, sans aucune trace Python.
+Elle permet aussi de rejouer l'etape 3 sans refaire les 11 minutes
+d'embedding : vecteurs.npy est mis en cache.
 
     python -m scripts.build_index
     python -m scripts.build_index --forcer     # ignore le cache des vecteurs

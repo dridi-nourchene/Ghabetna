@@ -50,6 +50,8 @@ RE_AVERTISSEMENT = re.compile(r"\*\*Avertissement de concordance\.?\*\*", re.I)
 RE_SIC = re.compile(r"\*\(sic\s*:?\s*«?\s*([^»)]*?)\s*»?\)\*")
 
 RE_LIGNE_TABLEAU = re.compile(r"^\s*\|")
+# Ligne de donnees d'un tableau markdown : | espece | ouverture | fermeture |
+RE_LIGNE_SEPARATRICE = re.compile(r"^\s*\|[\s:|-]+\|\s*$")
 
 
 # ============================================================================
@@ -189,6 +191,48 @@ def separer_contenu(lignes: list[str]) -> tuple[str, list[str], list[str]]:
 # SOUS-DECOUPAGE DES ARTICLES TROP LONGS
 # ============================================================================
 
+def eclater_tableau(texte: str) -> list[tuple[str, str]] | None:
+    """
+    Transforme un tableau markdown en une liste de (etiquette, phrase).
+
+    POURQUOI : le tableau de l'article premier fait 2462 caracteres et
+    melange 10 especes. Le signal "sanglier" s'y noyait parmi lievre,
+    becasse et tourterelle : un vecteur unique ne peut pas representer
+    10 regimes de dates differents.
+
+    Meme principe que l'article 12 : un tableau est une base de donnees
+    deguisee en prose, pas de la prose. On le decoupe par LIGNE.
+
+    Retourne None si le texte n'est pas un tableau exploitable.
+    """
+    lignes = [l for l in texte.splitlines() if RE_LIGNE_TABLEAU.match(l)]
+    if len(lignes) < 3:
+        return None
+
+    entetes, donnees = None, []
+    for l in lignes:
+        if RE_LIGNE_SEPARATRICE.match(l):
+            continue
+        cells = [c.strip() for c in l.strip().strip("|").split("|")]
+        if entetes is None:
+            entetes = cells
+        else:
+            donnees.append(cells)
+
+    if not entetes or not donnees:
+        return None
+
+    sortie = []
+    for cells in donnees:
+        if len(cells) != len(entetes):
+            continue
+        # Premiere colonne = sujet de la ligne (l'espece)
+        sujet = cells[0]
+        details = ", ".join(f"{e} : {c}" for e, c in zip(entetes[1:], cells[1:]))
+        sortie.append((sujet, f"{sujet}. {details}."))
+    return sortie or None
+
+
 def contient_tableau(texte: str) -> bool:
     """Un tableau markdown ne doit JAMAIS etre coupe au milieu."""
     return any(RE_LIGNE_TABLEAU.match(l) for l in texte.splitlines())
@@ -229,21 +273,26 @@ def sous_decouper(texte: str) -> list[str]:
 # PREFIXE CONTEXTUEL
 # ============================================================================
 
+def _libelle_court(meta: dict) -> str:
+    """
+    Version abregee de la source, pour le prefixe d'embedding.
+    "Arrêté du 27 août 2025 (JORT n° 107 du 29 août 2025)" -> "Arrêté chasse 2025/2026"
+    """
+    sid = meta.get("source_id", "")
+    return {
+        "arrete_2025": "Arrêté chasse 2025/2026",
+        "code_forestier": "Code forestier",
+        "loi_69_33": "Loi armes 69-33",
+    }.get(sid, meta["source"][:40])
+
+
 def construire_prefixe(meta: dict, parents: list[str], titre: str) -> str:
     """
-    LA FONCTION LA PLUS IMPORTANTE DU MODULE.
+    PREFIXE LONG — pour BM25 uniquement, et pour l'affichage.
 
-    L'article 14 de l'arrete fait 13 mots : "le droit de chasse dans les
-    perimetres loues par adjudication appartient aux adjudicataires."
-    Son vecteur brut serait trop pauvre pour etre retrouve : il ne contient
-    meme pas "arrete" ni "saison".
-
-    Meme probleme, en pire, pour l'article 12 : un chunk qui ne contient que
-    des toponymes ("Imadat Zwarine Nord - Imadat Sidi Baraket - ...") n'a
-    AUCUN mot que l'utilisateur emploiera dans sa question.
-
-    On prefixe donc chaque chunk de sa position dans la hierarchie. Le vecteur
-    porte alors "chasse", "arrete", "reglementation", "gouvernorat".
+    Il porte la source complete et toute la hierarchie. Sur un index lexical
+    c'est gratuit : BM25 pondere par l'IDF, donc les mots repetes dans les
+    160 chunks ("arrêté", "titre") ont un poids quasi nul automatiquement.
     """
     morceaux = [meta["source"]]
     for p in parents:
@@ -251,6 +300,26 @@ def construire_prefixe(meta: dict, parents: list[str], titre: str) -> str:
             morceaux.append(p)
     morceaux.append(titre)
     return " — ".join(morceaux)
+
+
+def construire_prefixe_court(meta: dict, titre: str, extra: str = "") -> str:
+    """
+    PREFIXE COURT — pour l'EMBEDDING.
+
+    POURQUOI DEUX PREFIXES :
+    un embedding est un vecteur de taille fixe ou CHAQUE token compte. Le
+    prefixe long fait ~25 tokens IDENTIQUES sur les 57 chunks de l'arrete.
+    Sur un chunk court, il representait la moitie du contenu : tous les
+    vecteurs se ressemblaient et la partie discriminante pesait trop peu.
+    C'est ce qui faisait remonter l'article 10 (colportage) en tete de trois
+    questions sans rapport.
+
+    Contrairement a BM25, l'embedding n'a AUCUN mecanisme equivalent a l'IDF
+    pour ignorer ce qui est commun a tout le corpus. Il faut donc le lui
+    epargner : ici ~6 tokens au lieu de 25.
+    """
+    base = f"{_libelle_court(meta)}, {titre}"
+    return f"{base}. {extra}" if extra else base
 
 
 # ============================================================================
@@ -293,8 +362,11 @@ def chunker_fichier(chemin: Path, domaine: str, meta_fichier: dict) -> list[dict
             art_parent = next((numero_article(p) for p in reversed(sec["parents"])
                                if numero_article(p)), None)
             gouv = m_gouv.group(1).strip()
+            court = construire_prefixe_court(
+                meta_fichier, f"Article {art_parent}",
+                f"Réserves de chasse interdites, gouvernorat de {gouv}")
             chunks.append(_fabriquer(meta_fichier, domaine, art_parent,
-                                     slug(gouv), titre, prefixe, corps,
+                                     slug(gouv), titre, prefixe, court, corps,
                                      "zone_geographique", gouv))
             continue
 
@@ -306,42 +378,70 @@ def chunker_fichier(chemin: Path, domaine: str, meta_fichier: dict) -> list[dict
             # "Lacunes connues" permet au bot de repondre "cette information
             # n'est pas dans mon corpus" au lieu d'inventer.
             if corps and len(corps) > config.TAILLE_MIN_ALERTE:
+                court = construire_prefixe_court(meta_fichier, titre)
                 chunks.append(_fabriquer(meta_fichier, domaine, None,
-                                         slug(titre), titre, prefixe, corps,
-                                         "contexte", None))
+                                         slug(titre), titre, prefixe, court,
+                                         corps, "contexte", None))
             continue
 
         # ---- CAS NORMAL : un article --------------------------------------
         if corps:
-            blocs = sous_decouper(corps)
-            for i, bloc in enumerate(blocs, start=1):
-                # Si l'article a ete sous-decoupe, on l'indique au LLM pour
-                # qu'il sache qu'il ne voit qu'un extrait.
-                suffixe = f" (partie {i}/{len(blocs)})" if len(blocs) > 1 else ""
-                chunks.append(_fabriquer(meta_fichier, domaine, article,
-                                         f"p{i}" if len(blocs) > 1 else None,
-                                         titre, prefixe + suffixe, bloc,
-                                         "norme", None))
+            # --- EXCEPTION 4 : article contenant un tableau ----------------
+            # Une ligne de tableau = un chunk. Sinon les 10 especes du
+            # tableau de l'article premier se noient dans un seul vecteur.
+            lignes_tab = eclater_tableau(corps) if contient_tableau(corps) else None
+
+            if lignes_tab:
+                # le texte hors tableau (alineas qui suivent) devient un chunk
+                hors_tableau = "\n".join(
+                    l for l in corps.splitlines()
+                    if not RE_LIGNE_TABLEAU.match(l)).strip()
+
+                for sujet, phrase in lignes_tab:
+                    court = construire_prefixe_court(meta_fichier, titre, sujet)
+                    chunks.append(_fabriquer(
+                        meta_fichier, domaine, article, slug(sujet, 30), titre,
+                        f"{prefixe} — {sujet}", court, phrase, "tableau", None))
+
+                if len(hors_tableau) > config.TAILLE_MIN_ALERTE:
+                    court = construire_prefixe_court(meta_fichier, titre)
+                    chunks.append(_fabriquer(
+                        meta_fichier, domaine, article, "suite", titre,
+                        prefixe, court, hors_tableau, "norme", None))
+            else:
+                blocs = sous_decouper(corps)
+                for i, bloc in enumerate(blocs, start=1):
+                    # Si l'article a ete sous-decoupe, on l'indique au LLM
+                    # pour qu'il sache qu'il ne voit qu'un extrait.
+                    suffixe = f" (partie {i}/{len(blocs)})" if len(blocs) > 1 else ""
+                    court = construire_prefixe_court(meta_fichier, titre)
+                    chunks.append(_fabriquer(meta_fichier, domaine, article,
+                                             f"p{i}" if len(blocs) > 1 else None,
+                                             titre, prefixe + suffixe, court,
+                                             bloc, "norme", None))
 
         # ---- EXCEPTION 3 : avertissements de concordance -------------------
         for j, avert in enumerate(avertissements, start=1):
+            court = construire_prefixe_court(
+                meta_fichier, titre, "avertissement de concordance")
             chunks.append(_fabriquer(meta_fichier, domaine, article,
                                      f"avert{j}",
                                      f"{titre} — avertissement de concordance",
                                      prefixe + " — avertissement de concordance",
-                                     avert, "avertissement", None))
+                                     court, avert, "avertissement", None))
 
     return chunks
 
 
 def _fabriquer(meta_fichier, domaine, article, sous_cle, titre, prefixe,
-               texte, type_chunk, gouvernorat) -> dict:
+               prefixe_court, texte, type_chunk, gouvernorat) -> dict:
     """
     Fabrique un chunk normalise.
 
-    ATTENTION ChromaDB : les valeurs de metadonnees doivent etre des types
-    simples (str, int, float, bool). Ni liste, ni dict. D'ou les alias
-    joints en une seule chaine.
+    Les metadonnees restent des types simples (str, int, float, bool) :
+    ni liste, ni dict. D'ou les alias joints en une seule chaine. Cela
+    garde le format lisible en JSON et compatible avec n'importe quel
+    magasin de vecteurs.
     """
     ident = f"{meta_fichier['source_id']}_art{article or slug(titre, 20)}"
     if sous_cle:
@@ -349,11 +449,14 @@ def _fabriquer(meta_fichier, domaine, article, sous_cle, titre, prefixe,
 
     return {
         "id": ident,
-        # texte_indexe -> ce qu'on EMBEDDE et ce que BM25 lit
+        # texte_embedding -> COURT, ce qu'on vectorise. Chaque token compte.
+        "texte_embedding": f"{prefixe_court}\n{texte}",
+        # texte_indexe -> LONG, ce que BM25 lit. L'IDF neutralise le commun.
         "texte_indexe": f"{prefixe}\n\n{texte}",
         # texte_affiche -> ce qu'on MONTRE au LLM et a l'utilisateur
         "texte_affiche": texte,
         "prefixe": prefixe,
+        "prefixe_court": prefixe_court,
         "metadata": {
             "domaine": domaine,
             "source": meta_fichier["source"],
