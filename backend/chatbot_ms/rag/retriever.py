@@ -60,7 +60,7 @@ class Retriever:
     # 5a. RECHERCHE DENSE
     # ========================================================================
 
-    def _dense(self, question: str, domaine: str | None, k: int) -> list[dict]:
+    def _dense(self, question: str, domaines: list[str] | None, k: int) -> list[dict]:
         """
         Compare le vecteur de la question aux vecteurs des chunks.
 
@@ -76,13 +76,13 @@ class Retriever:
             [config.PREFIXE_QUERY + question],
             normalize_embeddings=True,
         )[0].tolist()
-        return self.store.query(vec, k, domaine)
+        return self.store.query(vec, k, domaines)
 
     # ========================================================================
     # 5b. RECHERCHE LEXICALE
     # ========================================================================
 
-    def _bm25(self, question: str, domaine: str | None, k: int) -> list[dict]:
+    def _bm25(self, question: str, domaines: list[str] | None, k: int) -> list[dict]:
         """
         BM25 = score de pertinence LEXICALE. Trois facteurs combines :
 
@@ -122,7 +122,7 @@ class Retriever:
                 continue
             doc, meta = par_id[cid]
             # BM25 ne sait pas filtrer : on applique le domaine a posteriori
-            if domaine and meta.get("domaine") != domaine:
+            if domaines and meta.get("domaine") not in domaines:
                 continue
             rang += 1
             sortie.append({"id": cid, "texte": doc, "meta": meta,
@@ -187,23 +187,48 @@ class Retriever:
     # API PUBLIQUE
     # ========================================================================
 
-    def rechercher(self, question: str, domaine: str | None = None,
+    def rechercher(self, question: str, domaines: list[str] | None = None,
+                   question_precedente: str | None = None,
                    top: int | None = None) -> list[dict]:
-        """Point d'entree unique : question -> top-k chunks pertinents."""
+        """
+        Point d'entree unique : question -> top-k chunks pertinents.
+
+        question_precedente sert au MULTI-TOUR. "et pour le lievre ?" ne
+        contient ni "periode", ni "chasse", ni "date" : seule, elle ne
+        retrouve rien. Concatenee a la question precedente, les mots du tour
+        d'avant font remonter les bons chunks, et "lievre" oriente vers la
+        bonne ligne du tableau.
+
+        Limite assumee : au 5e tour sur des sujets differents, la
+        concatenation ramene du bruit. La solution propre serait une
+        reecriture de requete par le LLM, plus couteuse.
+        """
         top = top or config.TOP_K_FINAL
-        dense = self._dense(question, domaine, config.TOP_K_DENSE)
-        lexical = self._bm25(question, domaine, config.TOP_K_BM25)
+
+        requete = question
+        if config.CONCAT_HISTORIQUE_RETRIEVAL and question_precedente:
+            requete = f"{question_precedente} {question}"
+
+        dense = self._dense(requete, domaines, config.TOP_K_DENSE)
+        lexical = self._bm25(requete, domaines, config.TOP_K_BM25)
         return self._rrf(dense, lexical, config.K_RRF, top)
 
-    def expliquer(self, question: str, domaine: str | None = None) -> None:
+    def expliquer(self, question: str, domaines: list[str] | None = None,
+                  question_precedente: str | None = None) -> None:
         """Affiche le detail du retrieval. Sert au debug et a la demo."""
-        dense = self._dense(question, domaine, config.TOP_K_DENSE)
-        lexical = self._bm25(question, domaine, config.TOP_K_BM25)
+        requete = question
+        if config.CONCAT_HISTORIQUE_RETRIEVAL and question_precedente:
+            requete = f"{question_precedente} {question}"
+
+        dense = self._dense(requete, domaines, config.TOP_K_DENSE)
+        lexical = self._bm25(requete, domaines, config.TOP_K_BM25)
         top = self._rrf(dense, lexical, config.K_RRF, config.TOP_K_FINAL)
 
         print(f"\n  QUESTION : {question}")
-        print(f"  dense={len(dense)} candidats | bm25={len(lexical)} candidats "
-              f"| retenus={len(top)}\n")
+        if requete != question:
+            print(f"  REQUETE  : {requete}")
+        print(f"  domaines={domaines or 'tous'} | dense={len(dense)} "
+              f"| bm25={len(lexical)} | retenus={len(top)}\n")
         for i, c in enumerate(top, start=1):
             m = c["meta"]
             libelle = f"art. {m['article']}" if m["article"] else m["type"]

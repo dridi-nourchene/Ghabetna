@@ -8,6 +8,19 @@ Regle : aucune constante en dur ailleurs dans le code.
 import os
 from pathlib import Path
 
+# Charge le fichier .env AVANT tout appel a os.getenv().
+# Sans cela, os.getenv("GROQ_API_KEY") lirait les variables d'environnement
+# du systeme, qui ne contiennent rien : il faudrait exporter chaque variable
+# a la main a chaque ouverture de terminal.
+# En Docker, env_file fait deja ce travail et load_dotenv ne trouve rien :
+# c'est sans effet, donc sans risque de conflit.
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+except ImportError:
+    # python-dotenv absent : on continue avec les variables du systeme.
+    pass
+
 # ============================================================================
 # CHEMINS
 # ============================================================================
@@ -58,18 +71,73 @@ TOP_K_FINAL = 8              # chunks reellement envoyes au LLM
 K_RRF = 60                   # constante du Reciprocal Rank Fusion
 
 # ============================================================================
-# LLM
+# DOMAINES ET SPECIALITES
 # ============================================================================
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "anthropic")   # anthropic | ollama
-LLM_MODEL = os.getenv("LLM_MODEL", "claude-sonnet-4-6")
+# Chaque citoyen a UNE specialite choisie a l'inscription. Le chatbot ne lui
+# repond que sur celle-ci, PLUS le domaine "app" commun a tous (comment
+# gagner des coins, creer une alerte, convertir en bonus...).
+# L'etancheite entre chasse, camper et apiculture est totale.
+DOMAINE_COMMUN = "app"
+
+SPECIALITES = {
+    "chasseur":   "chasse",
+    "campeur":    "camper",
+    "apiculteur": "apiculture",
+}
+
+
+def domaines_pour(specialite: str | None) -> list[str] | None:
+    """
+    "chasseur" -> ["chasse", "app"]
+    None       -> None (aucun filtre : utile pour les tests)
+    inconnue   -> ["app"] seulement
+    """
+    if not specialite:
+        return None
+    dom = SPECIALITES.get(specialite.strip().lower())
+    return [dom, DOMAINE_COMMUN] if dom else [DOMAINE_COMMUN]
+
+
+# ============================================================================
+# LLM — GROQ
+# ============================================================================
+# Groq execute le modele sur du materiel specialise (LPU) : environ 500
+# tokens/seconde, soit ~1 seconde pour une reponse de 300 mots. Un modele
+# local sur CPU mettrait 1 a 2 minutes, ce qui rend l'usage impossible.
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 LLM_MAX_TOKENS = 1000
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+LLM_TEMPERATURE = 0.2        # bas : on veut de la fidelite, pas de la creativite
+
+# ============================================================================
+# CACHE DE REPONSES
+# ============================================================================
+# Filet de securite : si le reseau tombe, les questions deja posees repondent
+# depuis le disque. Indispensable le jour d'une demonstration.
+CACHE_ACTIF = os.getenv("CACHE_ACTIF", "1") == "1"
+CACHE_FILE = INDEX_DIR / "cache_reponses.json"
+
+# ============================================================================
+# HISTORIQUE DE CONVERSATION
+# ============================================================================
+# Nombre de tours precedents envoyes au LLM.
+MAX_TOURS_HISTORIQUE = 6
+
+# Concatener la question precedente a la question actuelle POUR LE RETRIEVAL.
+# "et pour le lievre ?" seule ne trouve rien ; precedee de "periode de chasse
+# du sanglier", les mots "periode" et "chasse" font remonter les bons chunks.
+CONCAT_HISTORIQUE_RETRIEVAL = True
+
+# ============================================================================
+# SERVICE
+# ============================================================================
+SERVICE_PORT = int(os.getenv("PORT", "8005"))
 
 # ============================================================================
 # METADONNEES PAR DEFAUT
 # ============================================================================
 # Appliquees quand un dossier de corpus n'a pas de _manifest.json.
-# C'est ce qui permet d'ajouter camping/ ou apiculture/ en deposant
+# C'est ce qui permet d'ajouter camper/, apiculture/ ou app/ en deposant
 # simplement des .md, sans toucher une ligne de code.
 META_DEFAUT = {
     "source": "Document interne",

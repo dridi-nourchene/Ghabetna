@@ -71,7 +71,8 @@ class NumpyStore:
     def count(self) -> int:
         return len(self.ids)
 
-    def query(self, vecteur, k: int, domaine: str | None = None) -> list[dict]:
+    def query(self, vecteur, k: int,
+              domaines: list[str] | None = None) -> list[dict]:
         """
         Recherche exacte par similarite cosinus.
 
@@ -82,10 +83,16 @@ class NumpyStore:
         v = np.asarray(vecteur, dtype=np.float32)
         scores = self.vecteurs @ v          # (170, 1024) x (1024,) -> (170,)
 
-        # Filtrage par domaine : les chunks des autres corpus (camper,
-        # beekeeper, app) sont ecartes en mettant leur score a -inf.
-        if domaine:
-            masque = np.array([m.get("domaine") == domaine for m in self.metas])
+        # Filtrage par domaine(s). On passe une LISTE et non une chaine :
+        # un chasseur interroge ["chasse", "app"] -> sa reglementation plus
+        # l'aide de l'application, mais jamais camper ni apiculture.
+        # Les chunks hors domaine recoivent -inf et sont ecartes.
+        if domaines:
+            autorises = set(domaines)
+            masque = np.array(
+                [m.get("domaine") in autorises for m in self.metas])
+            if not masque.any():
+                return []
             scores = np.where(masque, scores, -np.inf)
 
         # argpartition trouve les k meilleurs sans trier tout le tableau,

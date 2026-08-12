@@ -205,6 +205,17 @@ services:
     networks:
       - ghabetna_net
 
+  chatbot_ms:
+      build: ./backend/chatbot_ms
+      ports: ["8005:8005"]
+      env_file: ./backend/chatbot_ms/.env
+      volumes:
+        - hf_cache:/root/.cache/huggingface   # sinon 2,2 Go retéléchargés à chaque build
+        - ./backend/chatbot_ms/data:/app/data
+
+
+      
+
   # ── FRONTEND ───────────────────────────────────────────────
 
   frontend:
@@ -224,6 +235,7 @@ volumes:
   forest_db_data:
   analytics_db_data:
   alert_uploads:
+  hf_cache:
 # ── NETWORK ────────────────────────────────────────────────
 
 networks:
