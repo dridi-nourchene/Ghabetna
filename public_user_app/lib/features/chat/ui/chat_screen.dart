@@ -122,12 +122,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       itemBuilder: (_, i) {
         if (i >= state.messages.length) return const TypingIndicator();
         final m = state.messages[i];
+
+        // Une erreur n'est jamais affichée comme une réponse de Ghabetna :
+        // elle passe par le bandeau ambre centré, hors du style bulle.
+        if (m.enErreur) return const ErrorBanner();
+
         return m.role == Role.user
             ? UserBubble(texte: m.texte)
-            : Container(
-                color: Colors.yellow,
-                child: Text('LEN=${m.texte.length} ERR=${m.enErreur} >>${m.texte}<<'),
-              );
+            : AssistantBubble(message: m);
       },
     );
   }

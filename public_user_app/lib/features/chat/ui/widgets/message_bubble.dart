@@ -3,7 +3,11 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme.dart';
 import '../../data/chat_models.dart';
 
-/// Bulle de l'utilisateur : fond bleu clair, coin bas-droit rentré.
+/// Bulle de l'utilisateur.
+///
+/// Coins uniformes sur les 4 angles : plus de coin "rentre". L'alignement
+/// a droite du fil suffit a distinguer qui parle, sans avoir besoin d'une
+/// forme differente entre les deux bulles.
 class UserBubble extends StatelessWidget {
   const UserBubble({super.key, required this.texte});
   final String texte;
@@ -14,25 +18,21 @@ class UserBubble extends StatelessWidget {
       alignment: Alignment.centerRight,
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.78,
+          maxWidth: MediaQuery.of(context).size.width * 0.84,
         ),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
-          decoration: const BoxDecoration(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
             color: AppColors.bubbleUserBg,
-            borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(AppDims.bubble),
-              topRight: Radius.circular(AppDims.bubble),
-              bottomLeft: Radius.circular(AppDims.bubble),
-              bottomRight: Radius.circular(AppDims.bubbleTail),
-            ),
+            borderRadius: BorderRadius.circular(AppDims.bubble),
+            boxShadow: AppShadows.bulle,
           ),
           child: Text(
             texte,
             style: const TextStyle(
               fontSize: 13,
-              height: 1.5,
-              color: Colors.black,
+              height: 1.55,
+              color: AppColors.bubbleUserText,
             ),
           ),
         ),
@@ -41,83 +41,63 @@ class UserBubble extends StatelessWidget {
   }
 }
 
-/// Carte de réponse : liseré bleu à gauche, bandeau de verdict, corps de
-/// texte, encart « prochaine ouverture », ligne de sources dépliable.
+/// Bulle de l'assistant.
 ///
-/// Le bandeau et l'encart n'apparaissent que si le serveur a renvoyé un
-/// verdict, c'est-à-dire quand la question portait à la fois sur une espèce
-/// et une date. Sinon la carte se réduit au texte et aux sources.
-class AssistantBubble extends StatefulWidget {
+/// Fond blanc, meme border-radius uniforme que UserBubble, meme ombre.
+/// AUCUNE source n'est affichee ici, quel que soit le sujet de la reponse :
+/// ce choix a ete valide sur la maquette v3 et retire le liseré d'accent,
+/// le bandeau de source et son dépliage. Le verdict (bandeau + encart de
+/// prochaine ouverture) reste affiche : il fait partie de la reponse elle-
+/// meme, pas d'une citation.
+class AssistantBubble extends StatelessWidget {
   const AssistantBubble({super.key, required this.message});
   final ChatMessage message;
-
-  @override
-  State<AssistantBubble> createState() => _AssistantBubbleState();
-}
-
-class _AssistantBubbleState extends State<AssistantBubble> {
-  bool _sourcesOuvertes = false;
 
   static const _mois = [
     'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
     'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre',
   ];
-
   static const _jours = [
     'lundi', 'mardi', 'mercredi', 'jeudi',
     'vendredi', 'samedi', 'dimanche',
   ];
 
-  String _formatProchaine(DateTime d) {
-    final jour = _jours[d.weekday - 1];
-    return '$jour ${d.day} ${_mois[d.month - 1]}';
-  }
+  String _formatProchaine(DateTime d) =>
+      '${_jours[d.weekday - 1]} ${d.day} ${_mois[d.month - 1]}';
 
   @override
   Widget build(BuildContext context) {
-    final m = widget.message;
-
     return Align(
       alignment: Alignment.centerLeft,
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.90,
+          maxWidth: MediaQuery.of(context).size.width * 0.84,
         ),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-          decoration: const BoxDecoration(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
             color: AppColors.surface2,
-            border: Border(
-              top: BorderSide(color: AppColors.border, width: 0.5),
-              right: BorderSide(color: AppColors.border, width: 0.5),
-              bottom: BorderSide(color: AppColors.border, width: 0.5),
-              // Liseré d'accent : plus épais, il ancre la carte à gauche.
-              left: BorderSide(color: AppColors.accentBlue, width: 3),
-            ),
-            borderRadius: BorderRadius.only(
-              topRight: Radius.circular(AppDims.bubble),
-              bottomRight: Radius.circular(AppDims.bubble),
-            ),
+            borderRadius: BorderRadius.circular(AppDims.bubble),
+            border: Border.all(color: AppColors.border, width: 0.5),
+            boxShadow: AppShadows.bulle,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (m.verdict != null) _bandeauVerdict(m.verdict!),
+              if (message.verdict != null) _bandeauVerdict(message.verdict!),
               Text(
-                m.texte,
+                message.texte,
                 style: TextStyle(
                   fontSize: 13,
                   height: 1.55,
-                  color: m.enErreur
+                  color: message.enErreur
                       ? AppColors.textSecondary
                       : AppColors.textPrimary,
                 ),
               ),
-              if (m.verdict?.prochaine != null)
-                _encartProchaine(m.verdict!.prochaine!),
-              if (m.sources.isNotEmpty) _ligneSources(m.sources),
-              if (_sourcesOuvertes) ..._extraits(m.sources),
+              if (message.verdict?.prochaine != null)
+                _encartProchaine(message.verdict!.prochaine!),
             ],
           ),
         ),
@@ -154,7 +134,9 @@ class _AssistantBubbleState extends State<AssistantBubble> {
   }
 
   /// Un refus sec n'aide pas : on indique la prochaine date valide,
-  /// calculée côté serveur par rag/calendrier.py.
+  /// calculée côté serveur par rag/calendrier.py. Ce n'est pas une
+  /// "source" à citer, c'est une information directement utile à
+  /// l'utilisateur : elle reste affichée malgré le retrait des sources.
   Widget _encartProchaine(DateTime d) {
     return Container(
       margin: const EdgeInsets.only(top: 9),
@@ -183,79 +165,56 @@ class _AssistantBubbleState extends State<AssistantBubble> {
       ),
     );
   }
+}
 
-  Widget _ligneSources(List<Source> sources) {
-    // On n'affiche que la première : le retrieval remonte huit extraits,
-    // dont certains sans rapport. Le reste est accessible au dépliage.
-    final libelle = sources.length == 1
-        ? sources.first.libelleCourt
-        : '${sources.first.libelleCourt} et ${sources.length - 1} autre'
-            '${sources.length > 2 ? 's' : ''}';
+/// Bandeau d'erreur unique, hors du fil de conversation.
+///
+/// Toutes les erreurs (reseau, timeout, 401, 500, 503) convergent vers ce
+/// meme message : l'utilisateur n'a pas besoin de savoir laquelle s'est
+/// produite, seulement que ca n'a pas marche et qu'il peut reessayer.
+///
+/// Volontairement PAS une bulle d'assistant : un bandeau centre, de
+/// couleur ambre, ne peut pas etre confondu avec une reponse de Ghabetna.
+class ErrorBanner extends StatelessWidget {
+  const ErrorBanner({super.key});
 
-    return GestureDetector(
-      onTap: () => setState(() => _sourcesOuvertes = !_sourcesOuvertes),
-      behavior: HitTestBehavior.opaque,
-      child: Padding(
-        padding: const EdgeInsets.only(top: 9),
-        child: Row(
-          children: [
-            const Icon(Icons.menu_book_outlined,
-                size: 14, color: AppColors.textSecondary),
-            const SizedBox(width: 5),
-            Expanded(
-              child: Text(
-                libelle,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: AppColors.textSecondary,
+  static const _message = 'Connexion échouée. Réessayez dans un instant.';
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.90,
+        ),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          decoration: BoxDecoration(
+            color: AppColors.errorBg,
+            border: Border.all(color: AppColors.errorBorder, width: 0.5),
+            borderRadius: BorderRadius.circular(AppDims.info),
+            boxShadow: AppShadows.bulle,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.wifi_off_rounded,
+                  size: 15, color: AppColors.errorText),
+              const SizedBox(width: 7),
+              Flexible(
+                child: Text(
+                  _message,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.errorText,
+                  ),
                 ),
               ),
-            ),
-            Icon(
-              _sourcesOuvertes ? Icons.expand_less : Icons.expand_more,
-              size: 16,
-              color: AppColors.textSecondary,
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
-  }
-
-  List<Widget> _extraits(List<Source> sources) {
-    return sources.map((s) {
-      return Container(
-        margin: const EdgeInsets.only(top: 7),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: AppColors.surface0,
-          borderRadius: BorderRadius.circular(AppDims.info),
-          border: Border.all(color: AppColors.border, width: 0.5),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              s.libelleCourt,
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-                color: AppColors.accentBlueDark,
-              ),
-            ),
-            const SizedBox(height: 3),
-            Text(
-              s.extrait,
-              style: const TextStyle(
-                fontSize: 11,
-                height: 1.45,
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ],
-        ),
-      );
-    }).toList();
   }
 }
 
@@ -286,53 +245,38 @@ class _TypingIndicatorState extends State<TypingIndicator>
     const couleurs = [AppColors.dot1, AppColors.dot2, AppColors.dot3];
     return Align(
       alignment: Alignment.centerLeft,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 26,
-            height: 26,
-            decoration: const BoxDecoration(
-              color: AppColors.infoBg,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.smart_toy_outlined,
-                size: 15, color: AppColors.accentBlueDark),
-          ),
-          const SizedBox(width: 7),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: AppColors.surface2,
-              border: Border.all(color: AppColors.border, width: 0.5),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: AnimatedBuilder(
-              animation: _c,
-              builder: (_, __) => Row(
-                mainAxisSize: MainAxisSize.min,
-                children: List.generate(3, (i) {
-                  final phase = (_c.value - i * 0.18) % 1.0;
-                  final montee = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
-                  return Padding(
-                    padding: EdgeInsets.only(right: i < 2 ? 4 : 0),
-                    child: Transform.translate(
-                      offset: Offset(0, -2.5 * montee),
-                      child: Container(
-                        width: 5,
-                        height: 5,
-                        decoration: BoxDecoration(
-                          color: couleurs[i],
-                          shape: BoxShape.circle,
-                        ),
-                      ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppColors.surface2,
+          border: Border.all(color: AppColors.border, width: 0.5),
+          borderRadius: BorderRadius.circular(AppDims.bubble),
+          boxShadow: AppShadows.bulle,
+        ),
+        child: AnimatedBuilder(
+          animation: _c,
+          builder: (_, __) => Row(
+            mainAxisSize: MainAxisSize.min,
+            children: List.generate(3, (i) {
+              final phase = (_c.value - i * 0.18) % 1.0;
+              final montee = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
+              return Padding(
+                padding: EdgeInsets.only(right: i < 2 ? 4 : 0),
+                child: Transform.translate(
+                  offset: Offset(0, -2.5 * montee),
+                  child: Container(
+                    width: 5,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: couleurs[i],
+                      shape: BoxShape.circle,
                     ),
-                  );
-                }),
-              ),
-            ),
+                  ),
+                ),
+              );
+            }),
           ),
-        ],
+        ),
       ),
     );
   }

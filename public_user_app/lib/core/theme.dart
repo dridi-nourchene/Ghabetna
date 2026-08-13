@@ -50,6 +50,13 @@ class AppColors {
   static const dot1 = Color(0xFF378ADD);
   static const dot2 = Color(0xFF85B7EB);
   static const dot3 = Color(0xFFB5D4F4);
+
+  // --- Bandeau d'erreur (ambre) ------------------------------------------
+  // Volontairement distinct du bleu de la conversation : une erreur ne
+  // doit jamais pouvoir être confondue avec une réponse de Ghabetna.
+  static const errorBg = Color(0xFFFDEDD3);
+  static const errorBorder = Color(0xFFE8BE71);
+  static const errorText = Color(0xFF6B3D06);
   static const suggestionBorder = Color(0xFFB5D4F4);
 
   // --- Bouton d'envoi : vert translucide --------------------------------
@@ -65,14 +72,40 @@ class AppColors {
 class AppDims {
   AppDims._();
   static const double card = 22;
+  // Coins UNIFORMES pour les deux bulles (utilisateur et assistant) : plus
+  // de coin "rentré" d'un côté. L'alignement gauche/droite dans le fil
+  // suffit à distinguer qui parle.
   static const double bubble = 16;
-  static const double bubbleTail = 5;
   static const double info = 10;
   static const double suggestion = 12;
   static const double pill = 20;
-  static const double headerHeight = 86;
+  // +14 par rapport a l'original : compense le decalage du contenu
+  // vers le bas, sans quoi l'avatar deborderait du bandeau.
+  static const double headerHeight = 100;
   static const double avatar = 46;
   static const double sendButton = 36;
+}
+
+/// Ombre partagée par toutes les bulles de conversation (utilisateur,
+/// assistant, indicateur de frappe, bandeau d'erreur).
+///
+/// Deux couches, faible opacité, teintées de vert forêt plutôt que du gris
+/// neutre par défaut : les bulles se détachent du fond crème sans donner
+/// une impression de relief trop appuyée.
+class AppShadows {
+  AppShadows._();
+  static const List<BoxShadow> bulle = [
+    BoxShadow(
+      color: Color(0x14173404),
+      blurRadius: 3,
+      offset: Offset(0, 1),
+    ),
+    BoxShadow(
+      color: Color(0x0D173404),
+      blurRadius: 2,
+      offset: Offset(0, 1),
+    ),
+  ];
 }
 
 ThemeData buildTheme() {

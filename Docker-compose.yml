@@ -195,6 +195,7 @@ services:
       FOREST_MS_URL: http://forest_ms:8002
       ALERT_MS_URL: http://alert_ms:8003
       ANALYTICS_MS_URL: http://analytics_ms:8004
+      CHATBOT_MS_URL: http://chatbot_ms:8005
     ports:
       - "8000:8000"
     depends_on:
@@ -202,17 +203,21 @@ services:
       - forest_ms
       - alert_ms
       - analytics_ms
+      - chatbot_ms
     networks:
       - ghabetna_net
 
   chatbot_ms:
       build: ./backend/chatbot_ms
-      ports: ["8005:8005"]
+      ports:
+      - "8005:8005"
+      container_name: chatbot_ms
       env_file: ./backend/chatbot_ms/.env
       volumes:
         - hf_cache:/root/.cache/huggingface   # sinon 2,2 Go retéléchargés à chaque build
         - ./backend/chatbot_ms/data:/app/data
-
+      networks:
+      - ghabetna_net
 
       
 

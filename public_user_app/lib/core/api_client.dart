@@ -65,6 +65,15 @@ class ApiClient {
     // reviennent en mojibake sur certaines plateformes.
     final texte = utf8.decode(response.bodyBytes);
 
+    // Trace de diagnostic : montre ce que le serveur renvoie REELLEMENT.
+    // A retirer une fois l'integration stabilisee.
+    // ignore: avoid_print
+    print('[API] ${response.statusCode} — ${texte.length} octets');
+    if (texte.length < 600) {
+      // ignore: avoid_print
+      print('[API] corps: $texte');
+    }
+
     if (response.statusCode == 401) throw ApiException.unauthorized();
 
     if (response.statusCode >= 400) {

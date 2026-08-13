@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../core/api_exception.dart';
 import '../../../core/token_storage.dart';
-
 import '../data/chat_api.dart';
 import '../data/chat_models.dart';
 
@@ -44,14 +44,21 @@ class ChatNotifier extends StateNotifier<ChatState> {
   static const int _maxTours = 6;
 
   Future<void> _chargerSpecialite() async {
-    final s = await TokenStorage.readSpecialite();
-    if (s != null && mounted) {
-      state = state.copyWith(specialite: Specialite.fromCode(s));
+    try {
+      final s = await TokenStorage.readSpecialite();
+      if (s != null) {
+        state = state.copyWith(specialite: Specialite.fromCode(s));
+      }
+    } catch (_) {
+      // Le coffre sécurisé peut échouer au premier lancement : on garde
+      // simplement la spécialité par défaut.
     }
   }
 
   Future<void> changerSpecialite(Specialite s) async {
-    await TokenStorage.saveSpecialite(s.code);
+    try {
+      await TokenStorage.saveSpecialite(s.code);
+    } catch (_) {}
     // On repart d'une conversation vide : le domaine interrogé change,
     // l'historique précédent n'a plus de sens.
     state = ChatState(specialite: s);
@@ -73,19 +80,31 @@ class ChatNotifier extends StateNotifier<ChatState> {
       enAttente: true,
     );
 
+    // NOTE : on n'utilise PAS `mounted` ici.
+    // Sur un StateNotifier, cette propriété peut valoir false de façon
+    // inattendue selon la version de Riverpod, et un `if (!mounted) return`
+    // ferait sortir la méthode AVANT l'affectation du state : la réponse
+    // serait perdue et la bulle resterait vide.
     try {
       final r = await _api.envoyer(
         question: texte,
         specialite: state.specialite,
         historique: historique,
       );
-      if (!mounted) return;
+
+      // ignore: avoid_print
+      print('[CHAT] reponse=${r.reponse.length} car. | '
+          'sources=${r.sources.length} | verdict=${r.verdict?.etat} | '
+          'cache=${r.depuisCache} | ${r.dureeMs}ms');
+
       state = state.copyWith(
         messages: [
           ...state.messages,
           ChatMessage(
             role: Role.assistant,
-            texte: r.reponse,
+            texte: r.reponse.isEmpty
+                ? '(Le serveur a répondu sans texte.)'
+                : r.reponse,
             verdict: r.verdict,
             sources: r.sources,
           ),
@@ -93,17 +112,21 @@ class ChatNotifier extends StateNotifier<ChatState> {
         enAttente: false,
       );
     } on ApiException catch (e) {
-      if (!mounted) return;
+      // ignore: avoid_print
+      print('[CHAT] ApiException: ${e.message} (${e.statusCode})');
       state = state.copyWith(
         messages: [...state.messages, ChatMessage.erreur(e.message)],
         enAttente: false,
       );
-    } catch (_) {
-      if (!mounted) return;
+    } catch (e, pile) {
+      // On affiche l'exception réelle plutôt qu'un message générique :
+      // sans elle, une erreur de parsing JSON reste invisible.
+      // ignore: avoid_print
+      print('[CHAT] Erreur inattendue: $e\n$pile');
       state = state.copyWith(
         messages: [
           ...state.messages,
-          const ChatMessage.erreur('Une erreur inattendue est survenue.'),
+          ChatMessage.erreur('Erreur : $e'),
         ],
         enAttente: false,
       );
