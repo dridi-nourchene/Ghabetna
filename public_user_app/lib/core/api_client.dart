@@ -2,9 +2,11 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 
 import 'api_config.dart';
 import 'api_exception.dart';
+import 'fichier_joint.dart';
 import 'token_storage.dart';
 
 /// Client HTTP de l'application.
@@ -60,19 +62,67 @@ class ApiClient {
     }
   }
 
+  // ── Envoi multipart ─────────────────────────────────────────────────
+  /// Utilisé uniquement par l'inscription : c'est le seul appel qui
+  /// transporte des fichiers.
+  ///
+  /// On ne passe PAS par [post] : celle-ci fait jsonEncode et impose
+  /// Content-Type: application/json, ce qui détruirait les fichiers.
+  /// MultipartRequest génère lui-même son Content-Type avec la frontière
+  /// qui délimite les parties — il ne faut jamais l'écraser à la main.
+  ///
+  /// Aucun jeton n'est envoyé : le citoyen n'a pas encore de compte, et la
+  /// route est déclarée publique dans PUBLIC_ROUTES du gateway.
+  Future<Map<String, dynamic>> postMultipart(
+    String path, {
+    required Map<String, String> champs,
+    required Map<String, FichierJoint> fichiers,
+    Duration? timeout,
+  }) async {
+    final uri = Uri.parse('${ApiConfig.baseUrl}$path');
+
+    try {
+      final requete = http.MultipartRequest('POST', uri);
+
+      // Les champs vides ne sont pas envoyés du tout. Envoyer "" ferait
+      // échouer la conversion en date ou en entier côté citizen_ms — c'est
+      // exactement le 422 rencontré pendant les tests Swagger.
+      champs.forEach((cle, valeur) {
+        if (valeur.trim().isNotEmpty) requete.fields[cle] = valeur;
+      });
+
+      fichiers.forEach((cle, f) {
+        final parts = f.mimeType.split('/');
+        requete.files.add(
+          http.MultipartFile.fromBytes(
+            cle,
+            f.octets,
+            filename: f.nom,
+            contentType: parts.length == 2
+                ? MediaType(parts[0], parts[1])
+                : MediaType('application', 'octet-stream'),
+          ),
+        );
+      });
+
+      final streamed =
+          await requete.send().timeout(timeout ?? ApiConfig.uploadTimeout);
+      final response = await http.Response.fromStream(streamed);
+      return _decode(response);
+    } on SocketException {
+      throw ApiException.network();
+    } on HttpException {
+      throw ApiException.network();
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException.timeout();
+    }
+  }
+
   Map<String, dynamic> _decode(http.Response response) {
     // utf8.decode explicite : sans lui, les accents des textes juridiques
     // reviennent en mojibake sur certaines plateformes.
     final texte = utf8.decode(response.bodyBytes);
-
-    // Trace de diagnostic : montre ce que le serveur renvoie REELLEMENT.
-    // A retirer une fois l'integration stabilisee.
-    // ignore: avoid_print
-    print('[API] ${response.statusCode} — ${texte.length} octets');
-    if (texte.length < 600) {
-      // ignore: avoid_print
-      print('[API] corps: $texte');
-    }
 
     if (response.statusCode == 401) throw ApiException.unauthorized();
 
@@ -81,7 +131,18 @@ class ApiClient {
       try {
         final data = jsonDecode(texte);
         if (data is Map && data['detail'] != null) {
-          message = data['detail'].toString();
+          final detail = data['detail'];
+          // FastAPI renvoie une LISTE d'erreurs pour un 422 de validation,
+          // et une simple chaîne pour les erreurs métier (400, 409, 503).
+          // Sans ce test, le citoyen verrait « [{loc: [body, cin]...} ».
+          if (detail is List && detail.isNotEmpty) {
+            final premier = detail.first;
+            message = premier is Map
+                ? (premier['msg']?.toString() ?? message)
+                : premier.toString();
+          } else {
+            message = detail.toString();
+          }
         }
       } catch (_) {}
       throw ApiException(

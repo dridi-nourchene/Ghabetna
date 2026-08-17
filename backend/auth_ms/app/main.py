@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.db.database import engine, Base
 from app.core.redis_client import get_redis, close_redis
-from app.routers import auth_routes, user_routes
+from app.routers import auth_routes, user_routes, internal_routers
 
 
 @asynccontextmanager
@@ -36,3 +36,4 @@ app = FastAPI(
 
 app.include_router(auth_routes.router)
 app.include_router(user_routes.router)
+app.include_router(internal_routers.router)

@@ -13,7 +13,8 @@ class AppColors {
   static const surface1 = Color(0xFFF0EEE6); // champ de saisie
   static const surface0 = Color(0xFFFAF9F5); // fond de la conversation
   static const border = Color(0xFFE5E3DC);
-
+  static const authVertFond = Color(0xFFEDF3EE);
+  static const authVertPointille = Color(0xFFA8C2B0);
   // --- Texte ------------------------------------------------------------
   static const textPrimary = Color(0xFF1A1A18);
   static const textSecondary = Color(0xFF6B6A65);
@@ -51,6 +52,12 @@ class AppColors {
   static const dot2 = Color(0xFF85B7EB);
   static const dot3 = Color(0xFFB5D4F4);
 
+  // --- Authentification (maquette validée) ------------------------------
+  static const authVert = Color(0xFF4A7C59);
+  static const authVertPale = Color(0xFFD2E2D6);
+  static const authVertInactif = Color(0xFFA9C2B1); // bouton désactivé
+  static const authBlanc = Color(0xFFFFFFFF);
+
   // --- Bandeau d'erreur (ambre) ------------------------------------------
   // Volontairement distinct du bleu de la conversation : une erreur ne
   // doit jamais pouvoir être confondue avec une réponse de Ghabetna.
@@ -84,6 +91,8 @@ class AppDims {
   static const double headerHeight = 100;
   static const double avatar = 46;
   static const double sendButton = 36;
+  static const double controle = 14;      // rayon des champs et boutons
+  static const double espaceChamp = 20;   // marge sous chaque champ
 }
 
 /// Ombre partagée par toutes les bulles de conversation (utilisateur,
@@ -106,6 +115,14 @@ class AppShadows {
       offset: Offset(0, 1),
     ),
   ];
+    // Même géométrie pour les deux : seule l'opacité change, ce qui installe
+    // la hiérarchie sans modifier la forme.
+    static const List<BoxShadow> champ = [
+      BoxShadow(color: Color(0x1F4A7C59), blurRadius: 14, offset: Offset(0, 5)),
+    ];
+    static const List<BoxShadow> bouton = [
+      BoxShadow(color: Color(0x474A7C59), blurRadius: 14, offset: Offset(0, 5)),
+    ];
 }
 
 ThemeData buildTheme() {
@@ -124,5 +141,11 @@ ThemeData buildTheme() {
         color: AppColors.textPrimary,
       ),
     ),
+    textSelectionTheme: const TextSelectionThemeData(
+      cursorColor: AppColors.authVert,
+      selectionColor: Color(0x334A7C59),
+      selectionHandleColor: AppColors.authVert,
+    ),
   );
+  
 }

@@ -20,9 +20,13 @@ class ApiConfig {
   /// du modèle d'embedding (10 à 20 s). Les suivants coûtent environ 1 s.
   static const Duration chatTimeout = Duration(seconds: 90);
   static const Duration defaultTimeout = Duration(seconds: 20);
+  static const uploadTimeout = Duration(seconds: 120);
 
   // Routes du gateway
   static const String chat = '/api/chat/';
-  static const String login = '/api/auth/login';
   static const String me = '/api/auth/me';
+  static const login = '/api/auth/login';
+  static const refresh = '/api/auth/refresh';
+  static const inscription = '/api/citoyens/inscription';
+  static const monDossier = '/api/citoyens/mon-dossier';
 }

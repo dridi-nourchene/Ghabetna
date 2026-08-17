@@ -97,6 +97,25 @@ services:
       timeout: 100s
       retries: 5
 
+  citizen_db:
+    image: postgres:15
+    container_name: citizen_db
+    environment:
+      POSTGRES_DB: citizen_db
+      POSTGRES_USER: citizen_user
+      POSTGRES_PASSWORD: citizen_pass
+    volumes:
+      - citizen_db_data:/var/lib/postgresql/data
+    ports:
+      - "5437:5432"
+    networks:
+      - ghabetna_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U citizen_user -d citizen_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   # ── MICROSERVICES ──────────────────────────────────────────
 
   auth_ms:
@@ -196,6 +215,7 @@ services:
       ALERT_MS_URL: http://alert_ms:8003
       ANALYTICS_MS_URL: http://analytics_ms:8004
       CHATBOT_MS_URL: http://chatbot_ms:8005
+      CITIZEN_MS_URL: http://citizen_ms:8006
     ports:
       - "8000:8000"
     depends_on:
@@ -204,6 +224,7 @@ services:
       - alert_ms
       - analytics_ms
       - chatbot_ms
+      - citizen_ms
     networks:
       - ghabetna_net
 
@@ -219,7 +240,33 @@ services:
       networks:
       - ghabetna_net
 
-      
+  citizen_ms:
+      build:
+        context: ./backend/citizen_ms
+      container_name: citizen_ms
+      env_file:
+        - ./backend/citizen_ms/.env
+      environment:
+        DATABASE_URL: postgresql+asyncpg://citizen_user:citizen_pass@citizen_db:5432/citizen_db
+        AUTH_SERVICE_URL: http://auth_ms:8001
+        REDIS_URL: redis://redis:6379
+        BASE_URL: http://192.168.1.74:8000/api/citoyens
+      ports:
+        - "8006:8006"
+      volumes:
+        # Volume nommé, comme alert_uploads : sans lui, les pièces jointes
+        # disparaissent à chaque reconstruction du conteneur.
+        - citizen_uploads:/app/uploads
+      depends_on:
+        citizen_db:
+          condition: service_healthy
+        # service_started et non service_healthy : auth_ms n'a pas de
+        # healthcheck. citizen_ms n'appelle auth_ms qu'à la première
+        # inscription, pas au démarrage — un léger décalage est sans effet.
+        auth_ms:
+          condition: service_started
+      networks:
+        - ghabetna_net
 
   # ── FRONTEND ───────────────────────────────────────────────
 
@@ -241,6 +288,8 @@ volumes:
   analytics_db_data:
   alert_uploads:
   hf_cache:
+  citizen_db_data:
+  citizen_uploads:
 # ── NETWORK ────────────────────────────────────────────────
 
 networks:

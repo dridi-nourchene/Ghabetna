@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from app.middlewares.auth_middleware import auth_middleware
 from app.routers import auth_router, user_router, forest_router, analytics_router,chatbot_router
-from app.routers import alert_router
+from app.routers import alert_router, citizen_router
 
 app = FastAPI(title="Ghabetna — API Gateway", version="1.0.0")
 
@@ -32,3 +32,4 @@ app.include_router(forest_router.router)
 app.include_router(alert_router.router)
 app.include_router(chatbot_router.router)
 app.include_router(analytics_router.router) 
+app.include_router(citizen_router.router)

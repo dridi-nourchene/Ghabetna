@@ -64,4 +64,10 @@ async def auth_middleware(request: Request, call_next):
     request.state.user_role  = payload.get("role")
     request.state.user_email = payload.get("email")
 
+    # Spécialité du citoyen — absente pour le personnel, donc None.
+    # chatbot_router la lisait déjà mais elle valait toujours None : sans
+    # cette ligne, X-User-Specialite n'est jamais envoyé et le RAG ne sait
+    # pas quel corpus interroger.
+    request.state.user_specialite = payload.get("specialite")
+
     return await call_next(request)

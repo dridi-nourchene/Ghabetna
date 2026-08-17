@@ -3,15 +3,56 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from fastapi import HTTPException
 
-from app.models.user import User, UserStatus, RefreshToken
-from app.schemas.auth import (LoginRequest,TokenResponse,RefreshRequest,RefreshResponse,)
-from app.core.security import (verify_password,create_access_token,create_refresh_token,verify_refresh_token,get_refresh_token_expiry,)
+from app.models.user import User, UserStatus, UserRole, RefreshToken
+from app.schemas.auth import (LoginRequest, TokenResponse, RefreshRequest, RefreshResponse,)
+from app.core.security import (verify_password, create_access_token, create_refresh_token,
+                               verify_refresh_token, get_refresh_token_expiry,)
+
+
+# ────────────────────────────────────────────────────────────
+# HELPER — contenu du JWT
+# ────────────────────────────────────────────────────────────
+def _claims(user: User) -> dict:
+    """
+    Un seul endroit qui décide de ce qu'il y a dans le token, sinon login et
+    refresh finissent par produire des tokens différents.
+
+    specialite n'est présente que pour les citoyens. Elle sert à chatbot_ms :
+    un chasseur n'interroge jamais le corpus apiculture. Elle vient du token,
+    donc plus besoin du sélecteur de mode dans public_user_app.
+    """
+    claims = {
+        "user_id": str(user.user_id),
+        "role":    user.role.value,
+        "email":   user.email,
+    }
+    if user.specialite is not None:
+        claims["specialite"] = user.specialite.value
+    return claims
+
+
+# ────────────────────────────────────────────────────────────
+# HELPER — message de refus selon le statut
+# ────────────────────────────────────────────────────────────
+def _refus_statut(user: User) -> tuple[int, str]:
+    """
+    Le personnel et le citoyen ne vivent pas la même chose : un agent inactif
+    doit cliquer sur son lien d'activation, un citoyen en_attente doit juste
+    patienter. Un message générique laisserait le citoyen croire à une panne.
+    """
+    if user.status == UserStatus.en_attente:
+        return 403, "Votre dossier est en cours d'examen par l'administration"
+    if user.status == UserStatus.rejete:
+        return 403, "Votre dossier d'inscription a été refusé"
+    if user.status == UserStatus.banned:
+        return 403, "Compte suspendu — contactez l'administration"
+    return 403, f"Compte {user.status.value} — contactez l'administrateur"
 
 
 # ────────────────────────────────────────────────────────────
 # LOGIN
 # ────────────────────────────────────────────────────────────
-async def login(data: LoginRequest,db:   AsyncSession,) -> TokenResponse:
+async def login(data: LoginRequest, db: AsyncSession) -> TokenResponse:
     """
     1. Cherche le user par email
     2. Vérifie que le compte est activé (password_hash not None)
@@ -35,6 +76,8 @@ async def login(data: LoginRequest,db:   AsyncSession,) -> TokenResponse:
         )
 
     # ── Compte pas encore activé ──────────────────────────
+    # Ne concerne que le personnel : le citoyen arrive toujours avec un
+    # password_hash rempli dès l'inscription, c'est son statut qui le bloque.
     if not user.password_hash:
         raise HTTPException(
             status_code=401,
@@ -45,22 +88,16 @@ async def login(data: LoginRequest,db:   AsyncSession,) -> TokenResponse:
     if not verify_password(data.password, user.password_hash):
         raise HTTPException(
             status_code=401,
-            detail="mot de passe incorrect"
+            detail="Email ou mot de passe incorrect"
         )
 
-    # ── Compte inactif ou banni ───────────────────────────
+    # ── Compte inactif, en attente, rejeté ou banni ───────
     if user.status != UserStatus.active:
-        raise HTTPException(
-            status_code=403,
-            detail=f"Compte {user.status.value} — contactez l'administrateur"
-        )
+        code, message = _refus_statut(user)
+        raise HTTPException(status_code=code, detail=message)
 
     # ── Générer les tokens ────────────────────────────────
-    access_token = create_access_token({
-        "user_id": str(user.user_id),
-        "role":    user.role.value,
-        "email":   user.email,
-    })
+    access_token = create_access_token(_claims(user))
 
     refresh_token_value = create_refresh_token({
         "user_id": str(user.user_id),
@@ -85,7 +122,7 @@ async def login(data: LoginRequest,db:   AsyncSession,) -> TokenResponse:
 # ────────────────────────────────────────────────────────────
 # REFRESH TOKEN
 # ────────────────────────────────────────────────────────────
-async def refresh_token(data: RefreshRequest,db:   AsyncSession,) -> RefreshResponse:
+async def refresh_token(data: RefreshRequest, db: AsyncSession) -> RefreshResponse:
     """
     1. Vérifie la signature JWT du refresh token
     2. Vérifie en DB : existe + pas révoqué + pas expiré
@@ -133,6 +170,8 @@ async def refresh_token(data: RefreshRequest,db:   AsyncSession,) -> RefreshResp
     )
     user = result.scalar_one_or_none()
 
+    # Un citoyen banni entre deux refresh est stoppé ici : le statut est
+    # revérifié à chaque renouvellement, pas seulement au login.
     if not user or user.status != UserStatus.active:
         raise HTTPException(
             status_code=401,
@@ -144,11 +183,7 @@ async def refresh_token(data: RefreshRequest,db:   AsyncSession,) -> RefreshResp
     await db.commit()
 
     # ── Générer nouveau access token seulement ────────────
-    new_access_token = create_access_token({
-        "user_id": str(user.user_id),
-        "role":    user.role.value,
-        "email":   user.email,
-    })
+    new_access_token = create_access_token(_claims(user))
 
     return RefreshResponse(
         access_token = new_access_token,
@@ -158,7 +193,7 @@ async def refresh_token(data: RefreshRequest,db:   AsyncSession,) -> RefreshResp
 # ────────────────────────────────────────────────────────────
 # LOGOUT
 # ────────────────────────────────────────────────────────────
-async def logout(data:         RefreshRequest,current_user: User,db:           AsyncSession,) -> dict:
+async def logout(data: RefreshRequest, current_user: User, db: AsyncSession) -> dict:
     """
     1. Cherche le refresh token en DB
     2. Vérifie qu'il appartient au current_user
