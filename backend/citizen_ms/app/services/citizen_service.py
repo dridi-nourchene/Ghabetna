@@ -228,7 +228,6 @@ async def inscrire_citoyen(
                 db.add(Rucher(profil_id=profil.profil_id, **r))
 
         await db.commit()
-        await db.refresh(profil)
 
     except Exception as e:
         # Cas rare : notre propre base a refusé l'écriture. Le compte existe
@@ -303,9 +302,14 @@ async def decider_dossier(
             status_code=503,
             detail="Service d'authentification indisponible, décision non enregistrée",
         )
+    except HTTPException:
+        # auth_ms a répondu mais a refusé la transition (compte déjà rejeté
+        # ou déjà actif). Notre modification ne doit pas survivre : on annule
+        # ici plutôt que de compter sur le rollback de get_db.
+        await db.rollback()
+        raise
 
     await db.commit()
-    await db.refresh(profil)
     return profil
 
 

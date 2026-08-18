@@ -62,7 +62,6 @@ class _InscriptionScreenState extends State<InscriptionScreen> {
   final ctrlCodeApiculteur = TextEditingController();
   final ctrlCodeDelegation = TextEditingController();
   final ctrlCodeGouvernorat = TextEditingController();
-  final ctrlNbRuchers = TextEditingController();
   final ctrlNbColonies = TextEditingController();
 
   @override
@@ -74,7 +73,7 @@ class _InscriptionScreenState extends State<InscriptionScreen> {
       ctrlConfirmation, ctrlDelegation, ctrlSecteur, ctrlAdresse,
       ctrlPermisChasse, ctrlGouvDelivrance, ctrlPermisDetention,
       ctrlPermisPort, ctrlCodeApiculteur, ctrlCodeDelegation,
-      ctrlCodeGouvernorat, ctrlNbRuchers, ctrlNbColonies,
+      ctrlCodeGouvernorat, ctrlNbColonies,
     ]) {
       c.dispose();
     }
@@ -165,6 +164,8 @@ class _InscriptionScreenState extends State<InscriptionScreen> {
   }
 
   void _lireJustificatifs() {
+    // Les ruchers ne sont PAS lus ici : ils sont ajoutés directement dans
+    // _form par la zone de déclaration, qui est la seule à les manipuler.
     _form
       ..numeroPermisChasse = ctrlPermisChasse.text
       ..gouvernoratDelivrance = ctrlGouvDelivrance.text
@@ -173,7 +174,6 @@ class _InscriptionScreenState extends State<InscriptionScreen> {
       ..codeApiculteur = ctrlCodeApiculteur.text
       ..codeDelegation = ctrlCodeDelegation.text
       ..codeGouvernorat = ctrlCodeGouvernorat.text
-      ..nombreRuchers = int.tryParse(ctrlNbRuchers.text)
       ..nombreColonies = int.tryParse(ctrlNbColonies.text);
   }
 
@@ -310,7 +310,6 @@ class _InscriptionScreenState extends State<InscriptionScreen> {
                   ctrlCodeApiculteur: ctrlCodeApiculteur,
                   ctrlCodeDelegation: ctrlCodeDelegation,
                   ctrlCodeGouvernorat: ctrlCodeGouvernorat,
-                  ctrlNbRuchers: ctrlNbRuchers,
                   ctrlNbColonies: ctrlNbColonies,
                   onModif: _rafraichir,
                 ),

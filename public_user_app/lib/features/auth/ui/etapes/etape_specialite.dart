@@ -49,6 +49,15 @@ class EtapeSpecialite extends StatelessWidget {
                   form.documents.removeWhere(
                     (cle, _) => cle != 'cin_recto' && cle != 'cin_verso',
                   );
+
+                  // Même invariant pour les ruchers : une donnée qui n'a de
+                  // sens que pour une spécialité ne survit pas à un
+                  // changement de spécialité. Sans cette ligne, un retour
+                  // vers apiculteur ferait réapparaître des ruchers
+                  // rattachés à une déclaration abandonnée, et l'écart de
+                  // colonies affiché à l'étape 3 comparerait une ancienne
+                  // répartition à un nouveau certificat.
+                  form.ruchers.clear();
                 }
                 form.specialite = specialite;
                 onModif();

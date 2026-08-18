@@ -63,8 +63,13 @@ class EtapeRecapitulatif extends StatelessWidget {
             if (specialite == Specialite.apiculteur)
               ('Code ruche',
                   '${form.codeApiculteur} ${form.codeDelegation} ${form.codeGouvernorat}'),
+            // Dérivé de la liste réelle, plus d'un nombre saisi à part : le
+            // récapitulatif montre exactement ce qui partira au serveur.
             if (specialite == Specialite.apiculteur)
-              ('Ruchers', '${form.nombreRuchers ?? 0}'),
+              ('Ruchers', form.ruchers.isEmpty
+                  ? 'Aucun déclaré'
+                  : '${form.ruchers.length} · '
+                      '${form.totalColoniesRuchers} colonies'),
             if (specialite == Specialite.apiculteur)
               ('Colonies', '${form.nombreColonies ?? 0}'),
           ]),

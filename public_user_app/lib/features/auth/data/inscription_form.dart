@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import '../../../core/fichier_joint.dart';
 import '../../chat/data/chat_models.dart' show Specialite;
 
@@ -41,9 +43,20 @@ class InscriptionForm {
   String codeApiculteur = '';
   String codeDelegation = '';
   String codeGouvernorat = '';
-  int? nombreRuchers;
   int? nombreColonies;
   DateTime? dateCertificat;
+
+  /// Ruchers déclarés à l'inscription. Facultatif : l'annexe 21 reporte le
+  /// détail à la déclaration annuelle qui suit la validation du dossier.
+  final List<RucherSaisi> ruchers = [];
+
+  /// Somme des colonies réparties dans les ruchers. Comparée à
+  /// nombreColonies — celui du certificat collectif — pour signaler un écart
+  /// au citoyen AVANT l'envoi. Même calcul que calculer_alertes() côté
+  /// serveur, qui le remontera à l'admin : une seule règle, appliquée aux
+  /// deux bouts.
+  int get totalColoniesRuchers =>
+      ruchers.fold(0, (somme, r) => somme + r.nombreColonies);
 
   // ── Documents ──────────────────────────────────────────
   /// Clé = nom du champ attendu par citizen_ms (cin_recto, permis_chasse…).
@@ -137,12 +150,42 @@ class InscriptionForm {
         'code_apiculteur': codeApiculteur.trim(),
         'code_delegation': codeDelegation.trim(),
         'code_gouvernorat': codeGouvernorat.trim(),
-        'nombre_ruchers': nombreRuchers?.toString() ?? '',
         'nombre_colonies_declare': nombreColonies?.toString() ?? '',
         'date_certificat': d(dateCertificat),
+        // multipart ne transporte pas de tableau d'objets : citizen_ms attend
+        // une chaîne JSON dans ce champ, qu'il valide avec RucherIn. La clé
+        // n'est ajoutée que si la liste n'est pas vide — "[]" n'est pas une
+        // valeur vide au sens de postMultipart et partirait pour rien.
+        if (ruchers.isNotEmpty)
+          'ruchers': jsonEncode([
+            for (var i = 0; i < ruchers.length; i++)
+              {
+                // Numéro dérivé de la position, jamais saisi : une
+                // suppression renumérote donc automatiquement, et l'admin ne
+                // voit jamais une liste qui saute du n° 1 au n° 3.
+                'numero_rucher': i + 1,
+                'emplacement': ruchers[i].emplacement,
+                'nombre_colonies': ruchers[i].nombreColonies,
+              }
+          ]),
       });
     }
 
     return champs;
   }
+}
+
+/// Un rucher saisi par l'apiculteur.
+///
+/// Les clés produites dans versChamps() doivent rester alignées sur RucherIn
+/// de citizen_ms, qui refuse toute clé inconnue (extra="forbid").
+///
+/// latitude et longitude existent côté serveur mais ne sont pas demandées
+/// ici : l'apiculteur s'inscrit depuis chez lui, le GPS du téléphone
+/// donnerait sa position et non celle du rucher.
+class RucherSaisi {
+  RucherSaisi({required this.emplacement, required this.nombreColonies});
+
+  String emplacement;
+  int nombreColonies;
 }

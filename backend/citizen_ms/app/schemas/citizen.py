@@ -3,10 +3,32 @@ from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
-
 from app.models.citizen import Specialite, StatutDossier, TypeDocument
 
+import re
 
+
+def validate_code_ruche(valeur: str, longueur: int, nom_champ: str) -> str:
+    """
+    Annexe 16 de l'arrêté du 31 décembre 2015 : le code apposé sur la façade
+    de la ruche fait 8 chiffres, découpés en 4 (apiculteur) + 2 (délégation)
+    + 2 (gouvernorat).
+
+    La regex reproduit littéralement les CheckConstraint de la table
+    profils_apiculteurs ('^[0-9]{4}$' et '^[0-9]{2}$'). Vérifier ici ce que
+    PostgreSQL vérifiera de toute façon transforme un 500 après création du
+    compte en 400 que le citoyen comprend.
+
+    fullmatch et pas isdigit() : isdigit() accepte les chiffres arabes (٤٢)
+    et les exposants (²), que [0-9] refuse. Les deux règles doivent coïncider
+    exactement, sinon le 400 laisse passer ce que la base rejettera.
+    """
+    v = valeur.strip()
+
+    if not re.fullmatch(rf"[0-9]{{{longueur}}}", v):
+        raise ValueError(f"{nom_champ} : exactement {longueur} chiffres")
+
+    return v
 # ── Sortie : pièce jointe ─────────────────────────────────
 
 class PieceJointeOut(BaseModel):
@@ -106,3 +128,34 @@ class DecisionIn(BaseModel):
         if info.data.get("approuve") is False and not (v and v.strip()):
             raise ValueError("Un motif est obligatoire en cas de rejet")
         return v
+
+
+# ── Entrée : rucher déclaré à l'inscription ───────────────
+
+class RucherIn(BaseModel):
+    """
+    Un rucher envoyé en JSON dans le champ multipart `ruchers`.
+
+    Ce schéma existe pour que les erreurs de saisie soient refusées à l'étape
+    0 de l'inscription. Sans lui, le service fait `Rucher(**r)` avec le
+    dictionnaire brut du client : une clé inconnue lève un TypeError, un
+    champ manquant viole un NOT NULL. Dans les deux cas l'échec arrive à
+    l'étape 4, donc APRÈS la création du compte chez auth_ms — une faute de
+    frappe déclencherait une compensation.
+
+    Chaque contrainte réplique une colonne de la table `ruchers` :
+    max_length=255 pour String(255), ge=0 parce qu'un nombre de colonies
+    négatif n'existe pas, les bornes lat/lng parce qu'une coordonnée hors
+    plage ne pourra jamais être croisée avec les parcelles de forest_ms.
+    """
+
+    numero_rucher:   int = Field(..., ge=1)      # « Rucher n° 1 » de l'annexe 18
+    emplacement:     str = Field(..., min_length=1, max_length=255)
+    latitude:        Optional[float] = Field(None, ge=-90,  le=90)
+    longitude:       Optional[float] = Field(None, ge=-180, le=180)
+    nombre_colonies: int = Field(..., ge=0)
+
+    # Une clé inutile signale presque toujours une faute de frappe côté
+    # client. La refuser avec un message clair vaut mieux que l'ignorer en
+    # silence, ce que Pydantic ferait par défaut.
+    model_config = {"extra": "forbid"}

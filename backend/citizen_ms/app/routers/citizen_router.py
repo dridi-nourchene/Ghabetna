@@ -22,14 +22,15 @@ from uuid import UUID
 from fastapi import (
     APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 )
-from pydantic import BeforeValidator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user_id, require_admin
 from app.db.database import get_db
-from app.models.citizen import Specialite, StatutDossier, TypeDocument
-from app.schemas.citizen import DecisionIn, DossierOut, InscriptionOut
 from app.services import citizen_service
+from app.models.citizen import Specialite, StatutDossier, TypeDocument
+from pydantic import BeforeValidator, ValidationError 
+from app.schemas.citizen import DecisionIn, DossierOut, InscriptionOut, RucherIn
+from app.schemas.citizen import validate_code_ruche
 
 router = APIRouter(prefix="/api/citoyens", tags=["Citoyens"])
 
@@ -138,9 +139,20 @@ async def inscription(
             "numero_permis_port_transport": numero_permis_port_transport,
         }
 
-    elif specialite == Specialite.apiculteur:
+    if specialite == Specialite.apiculteur:
         if not (code_apiculteur and code_delegation and code_gouvernorat):
             raise HTTPException(400, "Le code d'identification des ruches est obligatoire")
+
+        # ValueError → 400 : ces règles répliquent les CheckConstraint de la
+        # table. Sans ça, une saisie hors Flutter donne un 500 après création
+        # du compte chez auth_ms, donc une compensation pour une faute de
+        # frappe.
+        try:
+            code_apiculteur  = validate_code_ruche(code_apiculteur,  4, "Code apiculteur")
+            code_delegation  = validate_code_ruche(code_delegation,  2, "Code délégation")
+            code_gouvernorat = validate_code_ruche(code_gouvernorat, 2, "Code gouvernorat")
+        except ValueError as e:
+            raise HTTPException(400, str(e))
 
         apiculteur_data = {
             "code_apiculteur":         code_apiculteur,
@@ -152,9 +164,29 @@ async def inscription(
 
         if ruchers:
             try:
-                ruchers_data = json.loads(ruchers)
+                brut = json.loads(ruchers)
             except json.JSONDecodeError:
                 raise HTTPException(400, "Le champ ruchers doit être un JSON valide")
+
+            # json.loads accepte aussi bien un objet, un nombre ou une chaîne.
+            # Sans ce test, la boucle plus bas itérerait sur les caractères
+            # d'une chaîne ou lèverait un TypeError sur un entier.
+            if not isinstance(brut, list):
+                raise HTTPException(400, "Le champ ruchers doit être une liste")
+
+            try:
+                # model_dump() : le service reçoit des dictionnaires propres,
+                # tous les champs présents et déjà typés. C'est ce qui rend
+                # `Rucher(**r)` sûr à l'étape 4.
+                ruchers_data = [RucherIn(**r).model_dump() for r in brut]
+            except ValidationError as e:
+                premier = e.errors()[0]
+                champ = premier["loc"][0] if premier["loc"] else "rucher"
+                raise HTTPException(400, f"Rucher invalide — {champ} : {premier['msg']}")
+            except TypeError:
+                # Un élément de la liste n'est pas un objet JSON : [1, 2, 3]
+                # ferait RucherIn(**1), qui explose avant Pydantic.
+                raise HTTPException(400, "Chaque rucher doit être un objet JSON")
 
     # ── Appel du service ──────────────────────────────────
     profil = await citizen_service.inscrire_citoyen(

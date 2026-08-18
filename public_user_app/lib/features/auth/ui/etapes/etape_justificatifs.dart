@@ -23,7 +23,6 @@ class EtapeJustificatifs extends StatelessWidget {
     required this.ctrlCodeApiculteur,
     required this.ctrlCodeDelegation,
     required this.ctrlCodeGouvernorat,
-    required this.ctrlNbRuchers,
     required this.ctrlNbColonies,
     required this.onModif,
   });
@@ -37,7 +36,6 @@ class EtapeJustificatifs extends StatelessWidget {
   final TextEditingController ctrlCodeApiculteur;
   final TextEditingController ctrlCodeDelegation;
   final TextEditingController ctrlCodeGouvernorat;
-  final TextEditingController ctrlNbRuchers;
   final TextEditingController ctrlNbColonies;
   final VoidCallback onModif;
 
@@ -237,36 +235,17 @@ class EtapeJustificatifs extends StatelessWidget {
         ),
         const SizedBox(height: 18),
 
-        Row(
-          children: [
-            Expanded(
-              child: ChampTexte(
-                etiquette: 'Nb de ruchers',
-                controleur: ctrlNbRuchers,
-                clavier: TextInputType.number,
-                validateur: (v) => (int.tryParse((v ?? '').trim()) == null)
-                    ? 'Nombre requis'
-                    : null,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: ChampTexte(
-                etiquette: 'Nb de colonies',
-                controleur: ctrlNbColonies,
-                clavier: TextInputType.number,
-                validateur: (v) {
-                  final n = int.tryParse((v ?? '').trim());
-                  if (n == null) return 'Nombre requis';
-                  final r = int.tryParse(ctrlNbRuchers.text.trim()) ?? 0;
-                  // Un rucher sans colonie n'a pas de sens : on le signale
-                  // ici pour éviter que l'admin découvre l'incohérence.
-                  if (r > n) return 'Moins de colonies que de ruchers';
-                  return null;
-                },
-              ),
-            ),
-          ],
+        // Le nombre de colonies vient du certificat collectif (annexe 19),
+        // c'est une donnée officielle. Il n'est jamais recalculé à partir
+        // des ruchers : un écart entre les deux est justement l'information
+        // que l'administration doit voir.
+        ChampTexte(
+          etiquette: 'Nombre de colonies (certificat)',
+          controleur: ctrlNbColonies,
+          clavier: TextInputType.number,
+          validateur: (v) => (int.tryParse((v ?? '').trim()) == null)
+              ? 'Nombre requis'
+              : null,
         ),
 
         ChampDate(
@@ -278,7 +257,376 @@ class EtapeJustificatifs extends StatelessWidget {
             onModif();
           },
         ),
+
+        _ZoneRuchers(
+          form: form,
+          ctrlNbColonies: ctrlNbColonies,
+          onModif: onModif,
+        ),
       ];
+}
+
+/// Déclaration des ruchers : liste des ruchers ajoutés + carte de saisie.
+///
+/// Stateful et isolé pour que EtapeJustificatifs reste sans état. Ce qui
+/// change ici — carte ouverte, texte en cours de frappe — n'intéresse pas le
+/// reste de l'étape ; seul un ajout ou une suppression remonte via onModif.
+///
+/// Les champs de la carte n'ont PAS de validateur. Ils vivent dans le Form
+/// de l'étape, qui les validerait au clic sur « Continuer » et bloquerait le
+/// passage à l'étape 4 dès que la carte est ouverte à vide. La vérification
+/// se fait donc à la main dans _enregistrer().
+class _ZoneRuchers extends StatefulWidget {
+  const _ZoneRuchers({
+    required this.form,
+    required this.ctrlNbColonies,
+    required this.onModif,
+  });
+
+  final InscriptionForm form;
+  final TextEditingController ctrlNbColonies;
+  final VoidCallback onModif;
+
+  @override
+  State<_ZoneRuchers> createState() => _ZoneRuchersState();
+}
+
+class _ZoneRuchersState extends State<_ZoneRuchers> {
+  bool _saisieOuverte = false;
+  String? _erreur;
+
+  final _ctrlEmplacement = TextEditingController();
+  final _ctrlColonies = TextEditingController();
+
+  @override
+  void dispose() {
+    _ctrlEmplacement.dispose();
+    _ctrlColonies.dispose();
+    super.dispose();
+  }
+
+  void _ouvrir() {
+    _ctrlEmplacement.clear();
+    _ctrlColonies.clear();
+    setState(() {
+      _erreur = null;
+      _saisieOuverte = true;
+    });
+  }
+
+  void _annuler() => setState(() {
+        _erreur = null;
+        _saisieOuverte = false;
+      });
+
+  void _enregistrer() {
+    final emplacement = _ctrlEmplacement.text.trim();
+    final colonies = int.tryParse(_ctrlColonies.text.trim());
+
+    if (emplacement.isEmpty) {
+      setState(() => _erreur = 'Indiquez l\'emplacement du rucher');
+      return;
+    }
+    // RucherIn impose ge=0 côté serveur : refuser ici évite un 400 après
+    // avoir renvoyé tout le dossier, pièces jointes comprises.
+    if (colonies == null || colonies < 0) {
+      setState(() => _erreur = 'Indiquez le nombre de colonies');
+      return;
+    }
+
+    widget.form.ruchers.add(
+      RucherSaisi(emplacement: emplacement, nombreColonies: colonies),
+    );
+    setState(() {
+      _erreur = null;
+      _saisieOuverte = false;
+    });
+    widget.onModif();
+  }
+
+  void _supprimer(int index) {
+    widget.form.ruchers.removeAt(index);
+    setState(() {});
+    widget.onModif();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final total = widget.form.totalColoniesRuchers;
+    final declare = int.tryParse(widget.ctrlNbColonies.text.trim());
+
+    // Écart signalé, jamais bloquant : le certificat collectif fait foi et
+    // la décision reste à l'admin. Même posture que calculer_alertes(), qui
+    // alerte sans refuser.
+    final ecart = widget.form.ruchers.isNotEmpty &&
+        declare != null &&
+        declare != total;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(top: 4, bottom: 2),
+          child: Text(
+            'Vos ruchers',
+            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          ),
+        ),
+        const Padding(
+          padding: EdgeInsets.only(bottom: 12),
+          child: Text(
+            'Facultatif. Vous pourrez les déclarer après validation.',
+            style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+          ),
+        ),
+
+        for (var i = 0; i < widget.form.ruchers.length; i++)
+          _CarteRucher(
+            numero: i + 1,
+            rucher: widget.form.ruchers[i],
+            onSupprimer: () => _supprimer(i),
+          ),
+
+        if (_saisieOuverte) _carteSaisie() else _boutonAjouter(),
+
+        if (ecart)
+          Container(
+            margin: const EdgeInsets.only(top: 4, bottom: AppDims.espaceChamp),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: AppColors.errorBg,
+              borderRadius: BorderRadius.circular(AppDims.controle),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.info_outline,
+                    size: 17, color: AppColors.errorText),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '$total colonies réparties dans vos ruchers, '
+                    '$declare déclarées sur le certificat. '
+                    'L\'administration vérifiera.',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      height: 1.45,
+                      color: AppColors.errorText,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _boutonAjouter() {
+    return GestureDetector(
+      onTap: _ouvrir,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: AppDims.espaceChamp),
+        height: AppDims.controle * 3.29, // 46, comme BoutonPrincipal
+        decoration: BoxDecoration(
+          color: AppColors.authVertFond,
+          borderRadius: BorderRadius.circular(AppDims.controle),
+          border: Border.all(color: AppColors.authVertPointille, width: 1),
+        ),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.add, size: 18, color: AppColors.authVert),
+            SizedBox(width: 8),
+            Text(
+              'Ajouter un rucher',
+              style: TextStyle(fontSize: 14, color: AppColors.authVert),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _carteSaisie() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppDims.espaceChamp),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 2),
+      decoration: BoxDecoration(
+        color: AppColors.surface2,
+        borderRadius: BorderRadius.circular(AppDims.controle),
+        border: Border.all(color: AppColors.authVert, width: 0.8),
+        boxShadow: AppShadows.champ,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: Text(
+              'Rucher n° ${widget.form.ruchers.length + 1}',
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+
+          // Texte libre : c'est le champ officiel de l'annexe 18, qui ne
+          // prévoit ni liste fermée ni coordonnées.
+          ChampTexte(
+            etiquette: 'Emplacement',
+            controleur: _ctrlEmplacement,
+            actionClavier: TextInputAction.next,
+          ),
+          ChampTexte(
+            etiquette: 'Nombre de colonies',
+            controleur: _ctrlColonies,
+            clavier: TextInputType.number,
+            actionClavier: TextInputAction.done,
+          ),
+
+          if (_erreur != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                _erreur!,
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  color: AppColors.errorText,
+                ),
+              ),
+            ),
+
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: _annuler,
+                  child: Container(
+                    height: 40,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(AppDims.controle),
+                      border:
+                          Border.all(color: AppColors.border, width: 0.5),
+                    ),
+                    child: const Center(
+                      child: Text(
+                        'Annuler',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: GestureDetector(
+                  onTap: _enregistrer,
+                  child: Container(
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: AppColors.authVert,
+                      borderRadius: BorderRadius.circular(AppDims.controle),
+                    ),
+                    child: const Center(
+                      child: Text(
+                        'Enregistrer',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.authBlanc,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+        ],
+      ),
+    );
+  }
+}
+
+/// Un rucher déjà déclaré, en lecture seule.
+///
+/// Pas de modification : le supprimer et le ressaisir coûte deux champs,
+/// une édition inline coûterait un second état de carte pour un gain nul.
+class _CarteRucher extends StatelessWidget {
+  const _CarteRucher({
+    required this.numero,
+    required this.rucher,
+    required this.onSupprimer,
+  });
+
+  final int numero;
+  final RucherSaisi rucher;
+  final VoidCallback onSupprimer;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.surface2,
+        borderRadius: BorderRadius.circular(AppDims.controle),
+        border: Border.all(color: AppColors.border, width: 0.5),
+        boxShadow: AppShadows.champ,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Rucher n° $numero',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  rucher.emplacement,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${rucher.nombreColonies} colonies',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          GestureDetector(
+            onTap: onSupprimer,
+            child: const Padding(
+              padding: EdgeInsets.only(left: 8),
+              child: Icon(Icons.delete_outline,
+                  size: 19, color: AppColors.textMuted),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// Un segment du code de ruche : champ court, centré, chiffres seulement.
