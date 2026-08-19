@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../../core/theme.dart';
 import '../../../../core/widgets/champ_date.dart';
@@ -233,6 +234,43 @@ class EtapeJustificatifs extends StatelessWidget {
             ),
           ],
         ),
+
+        // CORRECTION — message unique pour les trois segments.
+        // Chaque segment n'affiche qu'une bordure rouge : son message est
+        // de hauteur nulle pour ne pas décaler la rangée. Résultat, un code
+        // incomplet bloquait « Continuer » sans que rien ne l'explique.
+        // Ce FormField ne dessine rien tant que tout va bien, et porte le
+        // message commun sinon.
+        FormField<String>(
+          validator: (_) {
+            const segments = [4, 2, 2];
+            final valeurs = [
+              ctrlCodeApiculteur.text.trim(),
+              ctrlCodeDelegation.text.trim(),
+              ctrlCodeGouvernorat.text.trim(),
+            ];
+            for (var i = 0; i < valeurs.length; i++) {
+              final t = valeurs[i];
+              if (t.length != segments[i] || int.tryParse(t) == null) {
+                return 'Code incomplet : 4 chiffres, puis 2, puis 2.';
+              }
+            }
+            return null;
+          },
+          builder: (etat) => etat.hasError
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    etat.errorText!,
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      color: AppColors.errorText,
+                    ),
+                  ),
+                )
+              : const SizedBox.shrink(),
+        ),
+
         const SizedBox(height: 18),
 
         // Le nombre de colonies vient du certificat collectif (annexe 19),
@@ -243,9 +281,17 @@ class EtapeJustificatifs extends StatelessWidget {
           etiquette: 'Nombre de colonies (certificat)',
           controleur: ctrlNbColonies,
           clavier: TextInputType.number,
-          validateur: (v) => (int.tryParse((v ?? '').trim()) == null)
-              ? 'Nombre requis'
-              : null,
+          // CORRECTION — int.tryParse acceptait « -12 » : la valeur partait
+          // vers nombre_colonies_declare, qui n'a aucune contrainte de
+          // signe en base. Un nombre négatif n'aurait été vu que par
+          // l'administration, après coup.
+          validateur: (v) {
+            final t = (v ?? '').trim();
+            if (t.isEmpty) return 'Reportez le nombre inscrit sur le certificat';
+            final n = int.tryParse(t);
+            if (n == null || n < 0) return 'Chiffres uniquement, sans signe';
+            return null;
+          },
         ),
 
         ChampDate(
@@ -299,7 +345,23 @@ class _ZoneRuchersState extends State<_ZoneRuchers> {
   final _ctrlColonies = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    // CORRECTION — le nombre déclaré vit dans un controller du parent.
+    // build() le lisait sans jamais l'écouter : l'écart affiché restait
+    // celui d'avant la frappe, et pouvait annoncer une incohérence déjà
+    // corrigée. Le controller appartient à InscriptionScreen, qui le
+    // libère : on se contente de retirer l'écouteur.
+    widget.ctrlNbColonies.addListener(_surChangementColonies);
+  }
+
+  void _surChangementColonies() {
+    if (mounted) setState(() {});
+  }
+
+  @override
   void dispose() {
+    widget.ctrlNbColonies.removeListener(_surChangementColonies);
     _ctrlEmplacement.dispose();
     _ctrlColonies.dispose();
     super.dispose();
@@ -325,6 +387,13 @@ class _ZoneRuchersState extends State<_ZoneRuchers> {
 
     if (emplacement.isEmpty) {
       setState(() => _erreur = 'Indiquez l\'emplacement du rucher');
+      return;
+    }
+    // Rucher.emplacement est un String(255) en base et RucherIn impose
+    // max_length=255. Au-delà, le dossier complet — pièces jointes
+    // comprises — partirait pour revenir en 400.
+    if (emplacement.length > 255) {
+      setState(() => _erreur = 'Emplacement trop long : 255 caractères au maximum');
       return;
     }
     // RucherIn impose ge=0 côté serveur : refuser ici évite un 400 après
@@ -388,6 +457,31 @@ class _ZoneRuchersState extends State<_ZoneRuchers> {
           ),
 
         if (_saisieOuverte) _carteSaisie() else _boutonAjouter(),
+
+        // CORRECTION — carte ouverte et déjà remplie : « Continuer »
+        // passait à l'étape 4 et la saisie disparaissait sans un mot.
+        // Ce FormField participe au Form de l'étape et bloque le passage,
+        // mais seulement si quelque chose a réellement été tapé : ouvrir
+        // la carte puis se raviser ne bloque rien.
+        FormField<bool>(
+          validator: (_) =>
+              (_saisieOuverte && _ctrlEmplacement.text.trim().isNotEmpty)
+                  ? 'Enregistrez ou annulez le rucher en cours de saisie.'
+                  : null,
+          builder: (etat) => etat.hasError
+              ? Padding(
+                  padding:
+                      const EdgeInsets.only(bottom: AppDims.espaceChamp),
+                  child: Text(
+                    etat.errorText!,
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      color: AppColors.errorText,
+                    ),
+                  ),
+                )
+              : const SizedBox.shrink(),
+        ),
 
         if (ecart)
           Container(
@@ -474,10 +568,13 @@ class _ZoneRuchersState extends State<_ZoneRuchers> {
           ),
 
           // Texte libre : c'est le champ officiel de l'annexe 18, qui ne
-          // prévoit ni liste fermée ni coordonnées.
+          // prévoit ni liste fermée ni coordonnées. La borne à 255 est
+          // celle de la colonne : mieux vaut empêcher la frappe que
+          // refuser après l'envoi du dossier complet.
           ChampTexte(
             etiquette: 'Emplacement',
             controleur: _ctrlEmplacement,
+            longueurMax: 255,
             actionClavier: TextInputAction.next,
           ),
           ChampTexte(
@@ -653,6 +750,12 @@ class _CodeSegment extends StatelessWidget {
           child: TextFormField(
             controller: controleur,
             keyboardType: TextInputType.number,
+            // CORRECTION — le clavier numérique n'empêche ni le collage ni
+            // les claviers physiques. La contrainte en base est
+            // « ~ '^[0-9]{4}$' » : un caractère non numérique arrivé
+            // jusque-là fait échouer l'insertion, donc après la création du
+            // compte chez auth_ms. On filtre à la frappe.
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
             maxLength: longueur,
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 15),
@@ -672,6 +775,8 @@ class _CodeSegment extends StatelessWidget {
                   const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
               // errorStyle à hauteur nulle : le message vide ne doit pas
               // décaler les trois champs les uns par rapport aux autres.
+              // Le message lisible est porté par le FormField commun placé
+              // sous la rangée.
               errorStyle: const TextStyle(height: 0, fontSize: 0),
               border: _b(AppColors.border, 0.5),
               enabledBorder: _b(AppColors.border, 0.5),
