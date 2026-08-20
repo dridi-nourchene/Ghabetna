@@ -203,8 +203,7 @@ class EtapeJustificatifs extends StatelessWidget {
 
         // Trois segments et non huit chiffres d'un bloc : l'annexe 16 de
         // l'arrêté du 31 décembre 2015 définit apiculteur (4) + délégation
-        // (2) + gouvernorat (2). Découper permet de vérifier plus tard la
-        // cohérence avec l'adresse déclarée à l'étape 1.
+        // (2) + gouvernorat (2).
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -235,12 +234,10 @@ class EtapeJustificatifs extends StatelessWidget {
           ],
         ),
 
-        // CORRECTION — message unique pour les trois segments.
-        // Chaque segment n'affiche qu'une bordure rouge : son message est
-        // de hauteur nulle pour ne pas décaler la rangée. Résultat, un code
-        // incomplet bloquait « Continuer » sans que rien ne l'explique.
-        // Ce FormField ne dessine rien tant que tout va bien, et porte le
-        // message commun sinon.
+        // Message unique pour les trois segments. Chaque segment n'affiche
+        // qu'une bordure rouge : son message est de hauteur nulle pour ne pas
+        // décaler la rangée. Sans cette ligne, un code incomplet bloquait
+        // « Continuer » sans que rien ne l'explique.
         FormField<String>(
           validator: (_) {
             const segments = [4, 2, 2];
@@ -274,17 +271,15 @@ class EtapeJustificatifs extends StatelessWidget {
         const SizedBox(height: 18),
 
         // Le nombre de colonies vient du certificat collectif (annexe 19),
-        // c'est une donnée officielle. Il n'est jamais recalculé à partir
-        // des ruchers : un écart entre les deux est justement l'information
-        // que l'administration doit voir.
+        // c'est une donnée officielle reportée telle quelle. Il n'est ni
+        // recalculé, ni comparé au total des ruchers : la déclaration des
+        // ruchers est facultative, un écart n'est donc pas une anomalie.
         ChampTexte(
           etiquette: 'Nombre de colonies (certificat)',
           controleur: ctrlNbColonies,
           clavier: TextInputType.number,
-          // CORRECTION — int.tryParse acceptait « -12 » : la valeur partait
-          // vers nombre_colonies_declare, qui n'a aucune contrainte de
-          // signe en base. Un nombre négatif n'aurait été vu que par
-          // l'administration, après coup.
+          // int.tryParse accepterait « -12 », qui partirait vers
+          // nombre_colonies_declare sans aucune contrainte de signe en base.
           validateur: (v) {
             final t = (v ?? '').trim();
             if (t.isEmpty) return 'Reportez le nombre inscrit sur le certificat';
@@ -304,11 +299,7 @@ class EtapeJustificatifs extends StatelessWidget {
           },
         ),
 
-        _ZoneRuchers(
-          form: form,
-          ctrlNbColonies: ctrlNbColonies,
-          onModif: onModif,
-        ),
+        _ZoneRuchers(form: form, onModif: onModif),
       ];
 }
 
@@ -325,12 +316,10 @@ class EtapeJustificatifs extends StatelessWidget {
 class _ZoneRuchers extends StatefulWidget {
   const _ZoneRuchers({
     required this.form,
-    required this.ctrlNbColonies,
     required this.onModif,
   });
 
   final InscriptionForm form;
-  final TextEditingController ctrlNbColonies;
   final VoidCallback onModif;
 
   @override
@@ -345,23 +334,7 @@ class _ZoneRuchersState extends State<_ZoneRuchers> {
   final _ctrlColonies = TextEditingController();
 
   @override
-  void initState() {
-    super.initState();
-    // CORRECTION — le nombre déclaré vit dans un controller du parent.
-    // build() le lisait sans jamais l'écouter : l'écart affiché restait
-    // celui d'avant la frappe, et pouvait annoncer une incohérence déjà
-    // corrigée. Le controller appartient à InscriptionScreen, qui le
-    // libère : on se contente de retirer l'écouteur.
-    widget.ctrlNbColonies.addListener(_surChangementColonies);
-  }
-
-  void _surChangementColonies() {
-    if (mounted) setState(() {});
-  }
-
-  @override
   void dispose() {
-    widget.ctrlNbColonies.removeListener(_surChangementColonies);
     _ctrlEmplacement.dispose();
     _ctrlColonies.dispose();
     super.dispose();
@@ -421,16 +394,6 @@ class _ZoneRuchersState extends State<_ZoneRuchers> {
 
   @override
   Widget build(BuildContext context) {
-    final total = widget.form.totalColoniesRuchers;
-    final declare = int.tryParse(widget.ctrlNbColonies.text.trim());
-
-    // Écart signalé, jamais bloquant : le certificat collectif fait foi et
-    // la décision reste à l'admin. Même posture que calculer_alertes(), qui
-    // alerte sans refuser.
-    final ecart = widget.form.ruchers.isNotEmpty &&
-        declare != null &&
-        declare != total;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -458,11 +421,11 @@ class _ZoneRuchersState extends State<_ZoneRuchers> {
 
         if (_saisieOuverte) _carteSaisie() else _boutonAjouter(),
 
-        // CORRECTION — carte ouverte et déjà remplie : « Continuer »
-        // passait à l'étape 4 et la saisie disparaissait sans un mot.
-        // Ce FormField participe au Form de l'étape et bloque le passage,
-        // mais seulement si quelque chose a réellement été tapé : ouvrir
-        // la carte puis se raviser ne bloque rien.
+        // Carte ouverte et déjà remplie : « Continuer » passerait à l'étape 4
+        // et la saisie disparaîtrait sans un mot. Ce FormField participe au
+        // Form de l'étape et bloque le passage, mais seulement si quelque
+        // chose a réellement été tapé : ouvrir la carte puis se raviser ne
+        // bloque rien.
         FormField<bool>(
           validator: (_) =>
               (_saisieOuverte && _ctrlEmplacement.text.trim().isNotEmpty)
@@ -482,36 +445,6 @@ class _ZoneRuchersState extends State<_ZoneRuchers> {
                 )
               : const SizedBox.shrink(),
         ),
-
-        if (ecart)
-          Container(
-            margin: const EdgeInsets.only(top: 4, bottom: AppDims.espaceChamp),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-              color: AppColors.errorBg,
-              borderRadius: BorderRadius.circular(AppDims.controle),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(Icons.info_outline,
-                    size: 17, color: AppColors.errorText),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    '$total colonies réparties dans vos ruchers, '
-                    '$declare déclarées sur le certificat. '
-                    'L\'administration vérifiera.',
-                    style: const TextStyle(
-                      fontSize: 11.5,
-                      height: 1.45,
-                      color: AppColors.errorText,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
       ],
     );
   }
@@ -750,11 +683,10 @@ class _CodeSegment extends StatelessWidget {
           child: TextFormField(
             controller: controleur,
             keyboardType: TextInputType.number,
-            // CORRECTION — le clavier numérique n'empêche ni le collage ni
-            // les claviers physiques. La contrainte en base est
-            // « ~ '^[0-9]{4}$' » : un caractère non numérique arrivé
-            // jusque-là fait échouer l'insertion, donc après la création du
-            // compte chez auth_ms. On filtre à la frappe.
+            // Le clavier numérique n'empêche ni le collage ni les claviers
+            // physiques. La contrainte en base est « ~ '^[0-9]{4}$' » : un
+            // caractère non numérique arrivé jusque-là fait échouer
+            // l'insertion, donc après la création du compte chez auth_ms.
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
             maxLength: longueur,
             textAlign: TextAlign.center,
