@@ -47,6 +47,26 @@ class UserService {
     throw Exception('Impossible de charger les utilisateurs inactifs');
   }
 
+
+    // ── GET /api/users/citoyens ───────────────────────────
+  // Les comptes du public. Ni getActiveUsers ni getInactiveUsers ne les
+  // ramène : un citoyen naît en statut en_attente, que ces deux routes
+  // ignorent. Sert à retrouver le nom, la CIN et l'email derrière le
+  // user_id que citizen_ms est seul à connaître.
+  Future<List<AppUser>> getCitoyens() async {
+    final response = await http.get(
+      Uri.parse('${ApiConstants.baseUrl}/api/users/citoyens'),
+      headers: await _authHeaders(),
+    ).timeout(ApiConstants.requestTimeout);
+
+    if (response.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
+      return data.map((u) => AppUser.fromJson(u)).toList();
+    }
+    throw Exception('Impossible de charger les citoyens');
+  }
+
+  
   // ── DELETE /api/users/:id ─────────────────────────────
   Future<void> deleteUser(String userId) async {
     final response = await http.delete(

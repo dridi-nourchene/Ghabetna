@@ -22,7 +22,7 @@ séparées ; c'est le principe du Saga avec compensation.
 import logging
 import shutil
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 from uuid import UUID
@@ -371,35 +371,6 @@ async def get_mon_profil(db: AsyncSession, user_id: UUID) -> ProfilCitoyen:
     return profil
 
 
-# ── ALERTES DE COHÉRENCE ──────────────────────────────────
-
-def calculer_alertes(profil: ProfilCitoyen) -> list[str]:
-    """
-    Signale à l'admin ce qui semble incohérent. Ne bloque JAMAIS : la
-    décision reste humaine, le système ne fait que présenter l'information.
-    """
-    alertes: list[str] = []
-
-    if profil.apiculteur:
-        # Annexe 16 : « Il est tenu compte du domicile de l'apiculteur pour
-        # fixer le gouvernorat et la délégation. » Le code de la ruche doit
-        # donc concorder avec l'adresse déclarée.
-        api = profil.apiculteur
-        total_ruchers = sum(r.nombre_colonies for r in api.ruchers)
-        if api.ruchers and total_ruchers != api.nombre_colonies_declare:
-            alertes.append(
-                f"Nombre de colonies incohérent : {api.nombre_colonies_declare} "
-                f"déclarées, {total_ruchers} réparties dans les ruchers"
-            )
-
-    if profil.chasseur:
-        c = profil.chasseur
-        if c.date_expiration and c.date_expiration < datetime.now(timezone.utc).date():
-            alertes.append(
-                f"Permis de chasse expiré le {c.date_expiration.isoformat()}"
-            )
-
-    return alertes
 
 
 def serialiser_dossier(profil: ProfilCitoyen) -> dict:
@@ -429,6 +400,5 @@ def serialiser_dossier(profil: ProfilCitoyen) -> dict:
             for p in profil.pieces
         ],
         "chasseur":   profil.chasseur,
-        "apiculteur": profil.apiculteur,
-        "alertes":    calculer_alertes(profil),
+        "apiculteur": profil.apiculteur
     }

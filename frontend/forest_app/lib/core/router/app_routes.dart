@@ -17,12 +17,16 @@ import '../../features/admin/screens/admin_edit_forest_screen.dart';
 import '../../features/admin/screens/admin_create_parcelle_screen.dart';
 import '../../features/admin/screens/admin_assign_agents_screen.dart';
 import '../../features/admin/screens/admin_assign_superviseurs_screen.dart';
-// ── SUPERVISEUR ───────────────────────────────────────────────
+// --- SUPERVISEUR ───────────────────────────────────────────────
 import '../../features/supervisor/screens/supervisor_shell.dart';
 import '../../features/supervisor/screens/supervisor_map_screen.dart';
 import '../../features/supervisor/screens/supervisor_historique_screen.dart';
 import '../../features/supervisor/screens/supervisor_alert_detail_screen.dart';
 import '../../features/admin/screens/admin_analytics_screen.dart';
+
+
+//--- admin demande user ---------------------------------
+import '../../features/dossier/screens/admin_dossiers_screen.dart';
 
 class _PlaceholderScreen extends StatelessWidget {
   final String name;
@@ -149,6 +153,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           path:    '/admin/analytics',
           builder: (_, __) => const AdminAnalyticsScreen(),
         ),
+          GoRoute(
+            path:    '/admin/dossiers',
+            builder: (_, __) => const AdminDossiersScreen(),
+          ),
+          // Temporaire : le bouton « Détail » du tableau pointe déjà ici.
+          // Sans cette route, le clic tomberait sur errorBuilder et
+          // afficherait « Page introuvable » — mauvais signal en démo.
+          GoRoute(
+            path:    '/admin/dossiers/:profilId',
+            builder: (_, __) => const _PlaceholderScreen('Détail du dossier'),
+          ),
           
         ],
       ),

@@ -98,11 +98,7 @@ class DossierOut(BaseModel):
     pieces:     list[PieceJointeOut]        = []
     chasseur:   Optional[ProfilChasseurOut]   = None
     apiculteur: Optional[ProfilApiculteurOut] = None
-
-    # Alertes de cohérence calculées à la volée, pas stockées : elles aident
-    # l'admin à décider mais ne décident jamais à sa place.
-    alertes:    list[str] = []
-
+    
     model_config = {"from_attributes": True}
 
 

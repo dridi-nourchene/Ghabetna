@@ -54,6 +54,10 @@ async def get_active_users(request: Request):
 async def get_inactive_users(request: Request):
     return await _proxy(request, f"{USER_SERVICE_URL}/api/users/inactive")
 
+@router.get("/citoyens")
+async def get_citoyens(request: Request):
+    return await _proxy(request, f"{USER_SERVICE_URL}/api/users/citoyens")
+
 
 @router.get("/{user_id}")
 async def get_user(user_id: str, request: Request):

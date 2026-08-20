@@ -179,7 +179,10 @@ async def get_user_by_id(
 # ────────────────────────────────────────────────────────────
 async def get_active_users(db: AsyncSession) -> list[User]:
     result = await db.execute(
-        select(User).where(User.status == UserStatus.active)
+        select(User).where(
+            User.status == UserStatus.active,
+            User.role != UserRole.citoyen,
+        )
     )
     return result.scalars().all()
 
@@ -189,8 +192,33 @@ async def get_active_users(db: AsyncSession) -> list[User]:
 # ────────────────────────────────────────────────────────────
 async def get_inactive_users(db: AsyncSession) -> list[User]:
     result = await db.execute(
-        select(User).where(User.status == UserStatus.inactive)
+        select(User).where(
+            User.status == UserStatus.active,
+            User.role != UserRole.citoyen,
+        )
+
     )
+    return result.scalars().all()
+
+
+
+# ────────────────────────────────────────────────────────────
+# GET CITOYENS — l'identité derrière les dossiers d'inscription
+# ────────────────────────────────────────────────────────────
+async def get_citoyens(
+    db:     AsyncSession,
+    status: UserStatus | None = None,
+) -> list[User]:
+    
+    requete = select(User).where(User.role == UserRole.citoyen)
+
+    if status is not None:
+        requete = requete.where(User.status == status)
+
+    # Le plus récent d'abord : l'admin traite la file par ordre d'arrivée.
+    requete = requete.order_by(User.created_at.desc())
+
+    result = await db.execute(requete)
     return result.scalars().all()
 
 

@@ -1,6 +1,6 @@
 from uuid import UUID
 from app.core.redis_client import get_redis
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 import redis.asyncio as aioredis
 from app.core.dependencies import require_admin
@@ -8,6 +8,7 @@ from app.db.database import get_db
 from app.models.user import User
 from app.schemas.user import UserActivate, UserCreate, UserResponse, UserUpdate
 from app.services import user_service
+from app.models.user import User, UserStatus
 
 router = APIRouter(prefix="/api/users", tags=["Users"])
 
@@ -60,6 +61,18 @@ async def get_inactive_users(
     current_user: User         = Depends(require_admin),
 ):
     return await user_service.get_inactive_users(db)
+
+@router.get(
+    "/citoyens",
+    response_model=list[UserResponse],
+    summary="Comptes citoyens — identité des dossiers (admin)",
+)
+async def get_citoyens(
+    status:       UserStatus | None = Query(None),
+    db:           AsyncSession      = Depends(get_db),
+    current_user: User              = Depends(require_admin),
+):
+    return await user_service.get_citoyens(db, status)
 
 
 @router.get("/{user_id}", response_model=UserResponse)

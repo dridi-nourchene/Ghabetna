@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../dossier/providers/dossier_provider.dart';
 
 class AdminShell extends ConsumerStatefulWidget {
   final Widget child;
@@ -300,6 +301,17 @@ class _Sidebar extends StatelessWidget {
                   expanded:        expanded,
                   badgeCount:      8,
                 ),
+
+                // ── AJOUT ──────────────────────────────────
+                // Placée juste après « Utilisateurs » : les deux entrées
+                // parlent de comptes. L'une gère le personnel, l'autre le
+                // public. Sa pastille est la seule de la barre à refléter
+                // une vraie donnée.
+                _DossiersSidebarItem(
+                  location: location,
+                  expanded: expanded,
+                ),
+
                 _SidebarItem(
                   icon:            Icons.park_outlined,
                   label:           'Forêts',
@@ -381,6 +393,66 @@ class _Sidebar extends StatelessWidget {
     );
   }
 }
+
+// ── AJOUT ──────────────────────────────────────────────────────
+
+/// Entrée « Dossiers citoyens », avec une pastille alimentée par le vrai
+/// nombre de dossiers en attente.
+///
+/// Stateful et non un simple Consumer : la pastille doit être juste dès la
+/// connexion, avant même que l'admin ouvre l'écran. C'est tout l'intérêt
+/// d'un badge — signaler qu'il y a du travail sans avoir à aller voir.
+///
+/// Le chargement n'a lieu que si la liste est vide : l'écran des dossiers
+/// lance le sien de son côté, et on ne veut pas doubler l'appel à chaque
+/// changement de page dans le shell.
+class _DossiersSidebarItem extends ConsumerStatefulWidget {
+  final String location;
+  final bool   expanded;
+
+  const _DossiersSidebarItem({
+    required this.location,
+    required this.expanded,
+  });
+
+  @override
+  ConsumerState<_DossiersSidebarItem> createState() =>
+      _DossiersSidebarItemState();
+}
+
+class _DossiersSidebarItemState
+    extends ConsumerState<_DossiersSidebarItem> {
+  @override
+  void initState() {
+    super.initState();
+    // Après la première frame : modifier un provider pendant le build
+    // déclencherait une exception Riverpod.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final etat = ref.read(dossierListProvider);
+      if (etat.dossiers.isEmpty && !etat.isLoading) {
+        ref.read(dossierListProvider.notifier).charger();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final enAttente = ref.watch(nbDossiersEnAttenteProvider);
+
+    return _SidebarItem(
+      icon:            Icons.folder_shared_outlined,
+      label:           'Dossiers citoyens',
+      route:           '/admin/dossiers',
+      currentLocation: widget.location,
+      expanded:        widget.expanded,
+      // Null quand il n'y a rien à traiter : une pastille affichant « 0 »
+      // attirerait l'œil pour rien.
+      badgeCount:      enAttente > 0 ? enAttente : null,
+    );
+  }
+}
+
+// ── Fin de l'ajout ─────────────────────────────────────────────
 
 class _SidebarItem extends StatelessWidget {
   final IconData      icon;
