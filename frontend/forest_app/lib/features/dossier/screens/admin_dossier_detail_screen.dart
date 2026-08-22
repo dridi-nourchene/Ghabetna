@@ -72,9 +72,17 @@ class _AdminDossierDetailScreenState
       return;
     }
 
+    // ctxDialog est NOMMÉ, et non ignoré avec un « _ ».
+    //
+    // Avec « _ », les deux boutons capturaient le context de l'ÉCRAN. Or
+    // l'écran vit sous le navigateur imbriqué du ShellRoute, tandis que la
+    // boîte est poussée sur le navigateur racine. Navigator.of(contexte de
+    // l'écran) remontait donc au navigateur du shell, et pop() y retirait
+    // la PAGE de détail au lieu de la boîte : le shell se retrouvait sans
+    // enfant, d'où l'écran blanc.
     final confirme = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (ctxDialog) => AlertDialog(
         backgroundColor: AppColors.bgCard,
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12)),
@@ -96,12 +104,12 @@ class _AdminDossierDetailScreenState
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
+            onPressed: () => Navigator.of(ctxDialog).pop(false),
             child: const Text('Annuler',
                 style: TextStyle(color: AppColors.textSecondary)),
           ),
           ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
+            onPressed: () => Navigator.of(ctxDialog).pop(true),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.danger,
               foregroundColor: Colors.white,

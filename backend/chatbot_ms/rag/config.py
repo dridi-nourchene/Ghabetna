@@ -105,7 +105,7 @@ def domaines_pour(specialite: str | None) -> list[str] | None:
 # tokens/seconde, soit ~1 seconde pour une reponse de 300 mots. Un modele
 # local sur CPU mettrait 1 a 2 minutes, ce qui rend l'usage impossible.
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 LLM_MAX_TOKENS = 1000
 LLM_TEMPERATURE = 0.2        # bas : on veut de la fidelite, pas de la creativite
 

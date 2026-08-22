@@ -12,9 +12,6 @@ import '../../features/admin/screens/admin_users_screen.dart';
 import '../../features/admin/screens/admin_create_user_screen.dart';
 import '../../features/admin/screens/admin_edit_user_screen.dart';
 import '../../features/admin/screens/admin_forests_screen.dart';
-import '../../features/admin/screens/admin_create_forest_screen.dart';
-import '../../features/admin/screens/admin_edit_forest_screen.dart';
-import '../../features/admin/screens/admin_create_parcelle_screen.dart';
 import '../../features/admin/screens/admin_assign_agents_screen.dart';
 import '../../features/admin/screens/admin_assign_superviseurs_screen.dart';
 // --- SUPERVISEUR ───────────────────────────────────────────────
@@ -108,28 +105,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path:    '/admin/forests',
             builder: (_, __) => const AdminForestsScreen(),
-          ),
-          GoRoute(
-            path:    '/admin/forests/new',
-            builder: (_, __) => const AdminCreateForestScreen(),
-          ),
-          GoRoute(
-            path:    '/admin/forests/:forestId/edit',
-            builder: (_, state) => AdminEditForestScreen(
-              forestId: state.pathParameters['forestId']!,
-            ),
-          ),
-          GoRoute(
-            path:    '/admin/forests/:forestId/parcelles/new',
-            builder: (_, state) => AdminCreateParcelleScreen(
-              forestId: state.pathParameters['forestId']!,
-            ),
-          ),
-          GoRoute(
-            path:    '/admin/forests/:forestId/parcelles/:parcelleId/edit',
-            builder: (_, state) => AdminCreateParcelleScreen(
-              forestId: state.pathParameters['forestId']!,
-            ),
           ),
           GoRoute(
             path:    '/admin/assign/agents',

@@ -31,7 +31,7 @@ from fastapi import HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-
+from datetime import datetime, timezone
 from app.core import auth_client
 from app.core.auth_client import AuthIndisponible
 from app.core.config import settings
