@@ -193,7 +193,7 @@ async def get_active_users(db: AsyncSession) -> list[User]:
 async def get_inactive_users(db: AsyncSession) -> list[User]:
     result = await db.execute(
         select(User).where(
-            User.status == UserStatus.active,
+            User.status == UserStatus.inactive,
             User.role != UserRole.citoyen,
         )
 

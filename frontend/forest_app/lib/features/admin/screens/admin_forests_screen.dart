@@ -36,7 +36,6 @@ class _AdminForestsScreenState
   PanelMode  _panelMode  = PanelMode.list;
   String?    _expandedForestId;
 
-
   // ── Drawing ───────────────────────────────────────────
   final List<LatLng> _drawPoints   = [];
   List<LatLng>       _oldPoints    = [];
@@ -397,7 +396,7 @@ class _AdminForestsScreenState
       final isParc = _panelMode == PanelMode.createParcelle;
       list.add(Polygon(
         points:            closed,
-        color:             isParc ? parcelleFill : newPolyFill,
+        color:             isParc ? parcelleFill   : newPolyFill,
         borderColor:       isParc ? parcelleBorder : newPolyBorder,
         borderStrokeWidth: 2.0,
         isFilled:          true,
@@ -423,7 +422,6 @@ class _AdminForestsScreenState
           ),
         );
       }).toList();
-
 
   // ══════════════════════════════════════════════════════
   //  Panel content
@@ -588,6 +586,7 @@ class _AdminForestsScreenState
           initialZoom:   forestInitialZoom,
           minZoom: 4.0,
           maxZoom: 19.0,
+          onTap: _onMapTap,          // ← CORRECTION 1
         ),
         children: [
           TileLayer(
@@ -683,11 +682,10 @@ class _AdminForestsScreenState
                     )
                   : const SizedBox.shrink(),
             ),
-            // Tabs empilés à droite
           ],
         ),
       ),
-      
+
       // ── Overlays ──────────────────────────────────────
       if (forestState.isLoading)
         const Positioned(
@@ -695,25 +693,32 @@ class _AdminForestsScreenState
           child: Center(child: LoadingChip()),
         ),
 
+      // ← CORRECTION 2 : IgnorePointer, sinon la bulle
+      //   d'aide absorbe le premier clic au centre.
       if (_isDrawing && _drawPoints.isEmpty)
-        const Center(child: DrawHint()),
+        const IgnorePointer(
+          child: Center(child: DrawHint()),
+        ),
 
       if (_drawPoints.isNotEmpty)
         Positioned(
           bottom: 28, left: 0, right: 0,
-          child: Center(
-            child: DrawCounter(
-              count:    _drawPoints.length,
-              isClosed: _isClosed,
-              isParc:   _panelMode == PanelMode.createParcelle,
+          child: IgnorePointer(
+            child: Center(
+              child: DrawCounter(
+                count:    _drawPoints.length,
+                isClosed: _isClosed,
+                isParc:   _panelMode == PanelMode.createParcelle,
+              ),
             ),
           ),
         ),
-        Positioned(
-                right: 14,
-                bottom: 40,
-                child: ZoomPanel(mapController: _mapController),
-              ),
+
+      Positioned(
+        right: 14,
+        bottom: 40,
+        child: ZoomPanel(mapController: _mapController),
+      ),
     ]);
   }
 }

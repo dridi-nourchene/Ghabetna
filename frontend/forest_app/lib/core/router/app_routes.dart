@@ -27,6 +27,8 @@ import '../../features/admin/screens/admin_analytics_screen.dart';
 
 //--- admin demande user ---------------------------------
 import '../../features/dossier/screens/admin_dossiers_screen.dart';
+import '../../features/dossier/screens/admin_dossier_detail_screen.dart';
+
 
 class _PlaceholderScreen extends StatelessWidget {
   final String name;
@@ -157,12 +159,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path:    '/admin/dossiers',
             builder: (_, __) => const AdminDossiersScreen(),
           ),
-          // Temporaire : le bouton « Détail » du tableau pointe déjà ici.
-          // Sans cette route, le clic tomberait sur errorBuilder et
-          // afficherait « Page introuvable » — mauvais signal en démo.
           GoRoute(
             path:    '/admin/dossiers/:profilId',
-            builder: (_, __) => const _PlaceholderScreen('Détail du dossier'),
+            builder: (_, state) => AdminDossierDetailScreen(
+              profilId: state.pathParameters['profilId']!,
+            ),
           ),
           
         ],
