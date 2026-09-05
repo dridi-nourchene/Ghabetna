@@ -195,16 +195,16 @@ class ErrorBanner extends StatelessWidget {
             borderRadius: BorderRadius.circular(AppDims.info),
             boxShadow: AppShadows.bulle,
           ),
-          child: Row(
+          child: const Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.wifi_off_rounded,
+              Icon(Icons.wifi_off_rounded,
                   size: 15, color: AppColors.errorText),
-              const SizedBox(width: 7),
+              SizedBox(width: 7),
               Flexible(
                 child: Text(
                   _message,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     color: AppColors.errorText,
                   ),

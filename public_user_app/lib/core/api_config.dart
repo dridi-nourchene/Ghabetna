@@ -13,7 +13,7 @@ class ApiConfig {
   /// Sur émulateur Android, l'hôte de la machine est 10.0.2.2.
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://192.168.1.75:8000',
+    defaultValue: 'http://192.168.1.70:8000',
   );
 
   /// Le premier appel après un démarrage de chatbot_ms attend le chargement
@@ -29,4 +29,7 @@ class ApiConfig {
   static const refresh = '/api/auth/refresh';
   static const inscription = '/api/citoyens/inscription';
   static const monDossier = '/api/citoyens/mon-dossier';
+  static const alertes = '/api/alerts/';
+  static const mesAlertes = '/api/alerts/mine';
+  static const forets = '/api/forests/';
 }

@@ -149,7 +149,7 @@ class EtapeJustificatifs extends StatelessWidget {
               ),
               Switch(
                 value: form.possedeArme,
-                activeColor: AppColors.authVert,
+                activeThumbColor: AppColors.authVert,
                 onChanged: (v) {
                   form.possedeArme = v;
                   // Si le chasseur se ravise, les pièces liées à l'arme

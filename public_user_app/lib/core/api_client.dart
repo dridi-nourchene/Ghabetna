@@ -119,6 +119,55 @@ class ApiClient {
     }
   }
 
+  // ── Envoi multipart authentifié ─────────────────────────────────────
+  /// Utilisé par le signalement d'alerte : contrairement à [postMultipart],
+  /// le citoyen a déjà un compte ici, et alert_ms exige le jeton pour
+  /// identifier l'auteur du signalement (X-User-Id, injecté par le gateway
+  /// à partir du Bearer).
+  Future<Map<String, dynamic>> postMultipartAuth(
+    String path, {
+    required Map<String, String> champs,
+    Map<String, FichierJoint> fichiers = const {},
+    Duration? timeout,
+  }) async {
+    final uri = Uri.parse('${ApiConfig.baseUrl}$path');
+
+    try {
+      final requete = http.MultipartRequest('POST', uri)
+        ..headers.addAll(await _headers()..remove('Content-Type'));
+
+      champs.forEach((cle, valeur) {
+        if (valeur.trim().isNotEmpty) requete.fields[cle] = valeur;
+      });
+
+      fichiers.forEach((cle, f) {
+        final parts = f.mimeType.split('/');
+        requete.files.add(
+          http.MultipartFile.fromBytes(
+            cle,
+            f.octets,
+            filename: f.nom,
+            contentType: parts.length == 2
+                ? MediaType(parts[0], parts[1])
+                : MediaType('application', 'octet-stream'),
+          ),
+        );
+      });
+
+      final streamed =
+          await requete.send().timeout(timeout ?? ApiConfig.uploadTimeout);
+      final response = await http.Response.fromStream(streamed);
+      return _decode(response);
+    } on SocketException {
+      throw ApiException.network();
+    } on HttpException {
+      throw ApiException.network();
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException.timeout();
+    }
+  }
+
   Map<String, dynamic> _decode(http.Response response) {
     // utf8.decode explicite : sans lui, les accents des textes juridiques
     // reviennent en mojibake sur certaines plateformes.

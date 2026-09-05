@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../../../core/theme.dart';
 import '../../../../core/widgets/champ_date.dart';
@@ -221,7 +220,7 @@ class _Deroulant extends StatelessWidget {
         boxShadow: AppShadows.champ,
       ),
       child: DropdownButtonFormField<String>(
-        value: valeur,
+        initialValue: valeur,
         isExpanded: true,
         style: const TextStyle(fontSize: 15, color: AppColors.textPrimary),
         validator: (v) => (v == null) ? 'Choisissez votre gouvernorat' : null,

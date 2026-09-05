@@ -1,5 +1,6 @@
 /// Modèles de la conversation.
 /// Miroir exact des schémas Pydantic de chatbot_ms (app/schemas.py).
+library;
 
 enum Role { user, assistant }
 

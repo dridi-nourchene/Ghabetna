@@ -54,11 +54,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            CourbeHeader(
+            const CourbeHeader(
               hauteur: 150,
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
+                children: [
                   Text(
                     'Connexion',
                     style: TextStyle(
@@ -125,10 +125,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           : null,
                     ),
 
-                    Align(
+                    const Align(
                       alignment: Alignment.centerRight,
                       child: Padding(
-                        padding: const EdgeInsets.only(bottom: 22),
+                        padding: EdgeInsets.only(bottom: 22),
                         child: Text(
                           'Mot de passe oublié ?',
                           style: TextStyle(
@@ -147,10 +147,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                     const SizedBox(height: 26),
 
-                    Text(
+                    const Text(
                       'Pas encore de compte ?',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13,
                         color: AppColors.textSecondary,
                       ),
