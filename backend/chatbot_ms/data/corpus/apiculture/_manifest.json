@@ -1,0 +1,23 @@
+{
+  "production_biologique_apiculture.md": {
+    "source": "Arrêté du 9 juillet 2005 (cahier des charges production animale bio, Chapitre Deux)",
+    "source_id": "production_bio_apiculture",
+    "rang_normatif": "arrete",
+    "rang_poids": 2,
+    "validite": "permanent"
+  },
+  "preparation_biologique_miel.md": {
+    "source": "Arrêté du 3 décembre 2005 (cahier des charges préparation matières premières bio, section miel)",
+    "source_id": "preparation_bio_miel",
+    "rang_normatif": "arrete",
+    "rang_poids": 2,
+    "validite": "permanent"
+  },
+  "guide_technique_apiculture.md": {
+    "source": "L'élevage apicole — guide technique (Ministère de l'Agriculture / OEP)",
+    "source_id": "guide_technique_apiculture",
+    "rang_normatif": "guide_technique",
+    "rang_poids": 4,
+    "validite": "permanent"
+  }
+}

@@ -1,0 +1,611 @@
+\documentclass[11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{hyperref}
+\usepackage{xcolor}
+
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+
+\title{Architecture du RAG --- \texttt{chatbot\_ms}}
+\author{Ghabetna}
+\date{3 septembre 2026 --- révisé le 4 septembre 2026}
+
+\begin{document}
+
+\maketitle
+
+Ce document explique, étape par étape, comment fonctionne l'assistant conversationnel de
+Ghabetna~: ce qui est réellement implémenté dans \texttt{rag/} (avec les fichiers et fonctions
+exacts), pourquoi chaque choix a été fait, quelles étaient les alternatives possibles, et --- en fin
+de document --- quelles métriques manquent encore pour évaluer objectivement la qualité du
+système.
+
+Écrit pour deux usages~: comprendre le système en profondeur (utile en soutenance), et servir de
+base avant d'ajouter les métriques d'évaluation au code.
+
+\textit{Révision du 4 septembre 2026~: ajout de la section~5.4 sur l'étanchéité entre spécialités
+(filtrage par domaine), absente de la version initiale bien que le mécanisme existe dans le code
+depuis le début du projet. Point déclencheur~: l'ajout des corpus \texttt{camper} et
+\texttt{apiculture} en septembre 2026, qui a permis de vérifier ce mécanisme en pratique sans
+toucher au code.}
+
+\tableofcontents
+
+% ============================================================================
+\section{Vue d'ensemble du pipeline}
+% ============================================================================
+
+Le pipeline se déroule en deux temps.
+
+\textbf{Un job hors-ligne} (\texttt{scripts/build\_index.py}), rejoué seulement quand le corpus
+change~:
+
+\begin{enumerate}
+  \item \textbf{Chunking} --- \texttt{rag/chunker.py} $\rightarrow$ \texttt{chunks.json}
+  \item \textbf{Embedding} --- \texttt{rag/indexer.py} $\rightarrow$ \texttt{vecteurs.npy}
+  \item \textbf{Index BM25} --- \texttt{rag/indexer.py} $\rightarrow$ \texttt{bm25.pkl}
+\end{enumerate}
+
+\textbf{À chaque question}, avec un modèle déjà chargé en mémoire (\texttt{app/main.py},
+\texttt{lifespan})~:
+
+\begin{enumerate}
+  \setcounter{enumi}{3}
+  \item \textbf{Retrieval hybride} (dense + BM25 + RRF, \textbf{filtré par domaine}) ---
+        \texttt{rag/retriever.py} $\rightarrow$ top-8 chunks
+        \begin{itemize}
+          \item[$\hookrightarrow$] \texttt{rag/calendrier.py} --- si la question porte sur une
+                espèce et une date, un verdict est calculé
+        \end{itemize}
+  \item \textbf{Génération} --- \texttt{rag/generator.py} $\rightarrow$ appel Groq (LLM)
+  \item \textbf{Cache} --- \texttt{rag/cache.py} $\rightarrow$ réponse persistée sur disque
+\end{enumerate}
+
+La réponse, ses sources et le verdict éventuel sont renvoyés par \texttt{app/main.py}
+(\texttt{POST /api/chat/}).
+
+% ============================================================================
+\section{Étape 1 --- Chunking (\texttt{rag/chunker.py})}
+% ============================================================================
+
+\subsection*{Ce qui est fait}
+
+\begin{itemize}
+  \item \textbf{Un chunk = un article de loi}, détecté par un motif regex sur le titre
+        (\texttt{RE\_ARTICLE}), pas par le niveau de titre Markdown (\texttt{\#\#}/\texttt{\#\#\#})
+        --- celui-ci varie d'un texte à l'autre (le code forestier met ses articles en
+        \texttt{\#\#} pour le Titre~I et en \texttt{\#\#\#} pour le Titre~II).
+
+  \item \textbf{Découpage sémantique multi-domaines}~: le nom du sous-dossier de
+        \texttt{data/corpus/} devient la métadonnée \texttt{domaine}. Ajouter un nouveau domaine
+        = déposer des \texttt{.md} dans un nouveau dossier, aucune ligne de code à changer
+        (\texttt{chunker\_corpus()}).
+
+  \item \textbf{Sous-découpage des tableaux} (\texttt{eclater\_tableau})~: un tableau Markdown
+        est éclaté \textbf{ligne par ligne}, chaque ligne devenant son propre chunk. Raison
+        concrète~: le tableau de l'article premier de l'arrêté de chasse mélange 10 espèces
+        (lièvre, sanglier, bécasse\ldots) dans un seul bloc de texte --- un vecteur d'embedding
+        unique ne peut pas représenter 10 régimes de dates différents à la fois.
+
+  \item \textbf{Sous-découpage des articles trop longs} (\texttt{sous\_decouper})~: au-delà de
+        1500~caractères (\texttt{config.TAILLE\_MAX\_CHUNK}), découpage par paragraphe (jamais au
+        milieu d'un paragraphe, jamais au milieu d'un tableau).
+
+  \item \textbf{Double préfixe contextuel} --- décision la plus importante de ce module~:
+        \begin{itemize}
+          \item \texttt{prefixe} (long, \textasciitilde25~tokens)~: source complète + hiérarchie
+                (Titre/Chapitre) + titre. Utilisé pour \textbf{BM25 et l'affichage}.
+          \item \texttt{prefixe\_court} (\textasciitilde6~tokens)~: \textit{« Arrêté chasse
+                2025/2026, Article 12 »}. Utilisé \textbf{uniquement pour l'embedding}.
+          \item \textbf{Pourquoi deux préfixes}~: un vecteur d'embedding a une taille fixe où
+                chaque token compte. Le préfixe long, répété à l'identique sur 57~chunks de
+                l'arrêté, représentait la moitié du contenu d'un chunk court --- tous les vecteurs
+                se ressemblaient. C'est ce qui faisait remonter l'article~10 (colportage) en tête
+                de questions sans rapport. BM25, lui, pondère par IDF~: les mots répétés sur tout
+                le corpus ont un poids quasi nul automatiquement, donc le préfixe long ne le
+                pénalise pas.
+        \end{itemize}
+
+  \item \textbf{Fidélité juridique vs recherche} (\texttt{extraire\_alias\_sic})~: quand le texte
+        officiel contient une coquille (ex. article~176 écrit \textit{« chausseurs »}), le texte
+        affiché garde la faute (fidélité au texte de loi), mais un alias correct
+        (\textit{« chasseurs »}) est ajouté aux métadonnées pour que BM25 le retrouve quand même.
+
+  \item \textbf{Séparation normatif / avertissement / note} (\texttt{separer\_contenu})~: les
+        blocs \texttt{> **Avertissement de concordance**} (renvois périmés dans le texte officiel)
+        sont indexés et signalés au LLM~; les blocs \texttt{> **Note de fidélité**} sont purement
+        éditoriaux et exclus de l'index.
+\end{itemize}
+
+\subsection*{Alternative considérée~: découpage par taille fixe (sliding window)}
+
+\begin{tabularx}{\textwidth}{@{}l Y Y@{}}
+\toprule
+\textbf{Critère} & \textbf{Découpage par article (choisi)} & \textbf{Découpage par taille fixe} \\
+\midrule
+Cohérence sémantique & Un chunk = une unité juridique complète & Peut couper une règle en deux, brisant le sens \\
+Traçabilité (citation d'article) & Immédiate --- chaque chunk connaît son article & Nécessite de retrouver l'article a posteriori \\
+Complexité d'implémentation & Plus élevée (regex, exceptions~: tableaux, sous-sections géographiques) & Plus simple, générique \\
+Adapté à un corpus juridique structuré & Oui & Non --- ignore la structure \\
+\bottomrule
+\end{tabularx}
+
+\vspace{0.5em}
+Le découpage par article a été retenu car le corpus est un texte \textbf{juridique structuré} où
+l'unité de sens (l'article) est bien définie et doit rester citable telle quelle.
+
+% ============================================================================
+\section{Étape 2 --- Embedding (\texttt{rag/indexer.py}, fonction \texttt{embedder})}
+% ============================================================================
+
+\subsection*{Ce qui est fait}
+
+\begin{itemize}
+  \item \textbf{Modèle}~: \texttt{BAAI/bge-m3} (\texttt{config.MODELE\_EMBEDDING}), via
+        \texttt{sentence-transformers}, dimension \textbf{1024}.
+
+  \item \textbf{Aucun préfixe} \texttt{passage:}/\texttt{query:} n'est ajouté au texte avant
+        embedding pour ce modèle (\texttt{config.PREFIXE\_PASSAGE = ""}) --- bge-m3 n'en a pas
+        besoin, contrairement à \texttt{intfloat/multilingual-e5-*} qui les exige.
+
+  \item \textbf{Cache par empreinte} (\texttt{\_empreinte\_corpus})~: un hash SHA-256 du modèle +
+        préfixe + contenu de chaque chunk est comparé au cache existant
+        (\texttt{vecteurs.meta.json}). Si rien n'a changé, les vecteurs sont rechargés depuis
+        \texttt{vecteurs.npy} au lieu d'être recalculés --- l'embedding complet prend
+        \textasciitilde11~minutes sur CPU, le rechargement quelques secondes.
+
+  \item \textbf{Normalisation} (\texttt{normalize\_embeddings=True})~: chaque vecteur a une norme
+        de~1, ce qui rend le \textbf{produit scalaire mathématiquement égal au cosinus} ---
+        \texttt{store.py} peut donc chercher par une simple multiplication matricielle, sans
+        calcul de norme à chaque requête.
+\end{itemize}
+
+\subsection*{Choix du modèle~: comparaison}
+
+\begin{tabularx}{\textwidth}{@{}l c c c Y@{}}
+\toprule
+\textbf{Modèle} & \textbf{Dim.} & \textbf{Multi. FR/AR} & \textbf{Préfixe requis} & \textbf{Pourquoi retenu / écarté} \\
+\midrule
+\textbf{BAAI/bge-m3 (retenu)} & 1024 & Oui (100+ langues) & Non & Bon compromis qualité/coût en local, pas de dépendance à une clé API pour l'embedding \\
+intfloat/multilingual-e5-base & 768 & Oui & Oui (\texttt{query:}/\texttt{passage:}) & Dimension plus faible $\rightarrow$ moins de nuance~; risque d'erreur silencieuse si le préfixe est oublié \\
+paraphrase-multilingual-MiniLM-L12-v2 & 384 & Oui (moindre qualité) & Non & Plus rapide, mais dimension trop faible pour un corpus juridique dense en vocabulaire spécialisé \\
+text-embedding-3-small (OpenAI) & 1536 & Oui & Non & Qualité élevée mais dépendance réseau + coût par requête d'indexation~; incompatible avec l'exigence de fonctionnement à faible coût \\
+Modèle non-multilingue (ex. all-MiniLM-L6-v2) & 384 & Non & Non & Écarté d'emblée~: le corpus est en français, les questions peuvent arriver en arabe \\
+\bottomrule
+\end{tabularx}
+
+\vspace{0.5em}
+\textbf{Règle opérationnelle} notée dans le code (\texttt{config.py:41-44})~: changer de modèle
+d'embedding oblige à \textbf{tout réindexer} --- deux modèles produisent des espaces vectoriels
+incomparables, un mélange romprait totalement la recherche, \textbf{silencieusement} (aucune
+erreur, juste des résultats incohérents).
+
+% ============================================================================
+\section{Étape 3 --- Index lexical BM25 (\texttt{rag/indexer.py}, fonction \texttt{indexer\_bm25})}
+% ============================================================================
+
+\subsection*{Ce qui est fait}
+
+\begin{itemize}
+  \item Bibliothèque \texttt{rank\_bm25} (\texttt{BM25Okapi}), construit sur le texte
+        \texttt{texte\_indexe} (préfixe long + corps + alias de coquilles).
+  \item \textbf{Tokenisation dédiée} (\texttt{tokeniser})~: minuscules + suppression des accents
+        (NFD + filtrage des marques diacritiques), pour que \textit{« Aïn Draham »} et
+        \textit{« Ain Draham »} produisent les mêmes tokens.
+\end{itemize}
+
+\subsection*{Pourquoi BM25 en plus du dense}
+
+Le corpus contient des éléments que l'embedding sémantique gère mal~:
+
+\begin{itemize}
+  \item \textasciitilde800 toponymes dans l'article~12 (noms de réserves de chasse)
+  \item des termes rares sans voisin sémantique clair (\textit{« slougui »}, \textit{« chevrotine »}, \textit{« adjudicataires »})
+  \item des montants exacts que le dense ne distingue pas (\textit{« 90~dinars »} vs \textit{« 150~dinars »})
+\end{itemize}
+
+À l'inverse, sur \textit{« puis-je tirer un sanglier la nuit »}, le dense retrouve l'article~172 qui
+ne contient aucun de ces mots --- BM25 seul échouerait. D'où la fusion des deux (section suivante).
+
+\subsection*{Alternative considérée~: dense uniquement}
+
+Un système dense-only est plus simple à maintenir (un seul index), mais le test de retrieval
+documenté dans \texttt{scripts/test\_retrieval.py} montre concrètement l'échec sur des requêtes
+lexicales précises (montants, toponymes, mots rares). La complexité additionnelle de BM25~+~fusion
+a été jugée nécessaire au vu de la nature du corpus (texte juridique avec beaucoup de données
+factuelles précises).
+
+% ============================================================================
+\section{Étape 4 --- Retrieval hybride (\texttt{rag/retriever.py})}
+% ============================================================================
+
+\subsection{Recherche dense (\texttt{\_dense})}
+
+Encode la question (avec \texttt{PREFIXE\_QUERY}, vide pour bge-m3), puis interroge
+\texttt{NumpyStore.query()}. \textbf{Magasin de vecteurs = un tableau NumPy en mémoire}, pas de
+base vectorielle dédiée (\texttt{rag/store.py}). La recherche est un produit matriciel
+\texttt{vecteurs @ question}~: \textasciitilde0,1~ms pour \textasciitilde170-500~chunks.
+
+\subsubsection*{Choix du magasin de vecteurs~: comparaison}
+
+\begin{tabularx}{\textwidth}{@{}l Y Y Y@{}}
+\toprule
+\textbf{Solution} & \textbf{Latence à cette échelle} & \textbf{Complexité opérationnelle} & \textbf{Justification} \\
+\midrule
+\textbf{NumPy brute-force (retenu)} & \textasciitilde0,1~ms & Aucune (aucun service à déployer) & À cette échelle (170-500 chunks $\times$ 1024~dim \textasciitilde0,7-2~Mo), un calcul exact est plus rapide qu'un index approximatif, sans complexité supplémentaire \\
+FAISS (index HNSW) & Comparable ou plus lent en dessous de \textasciitilde100k vecteurs & Dépendance native compilée à gérer & Utile seulement à grande échelle --- non atteinte ici \\
+Base vectorielle managée (Pinecone, Qdrant Cloud) & Latence réseau (dizaines de ms) & Dépendance externe, coût récurrent & Ajoute une dépendance réseau pour un gain nul à ce volume de données \\
+pgvector (extension PostgreSQL) & Correcte & Nécessite une base dédiée + requêtes SQL & Pertinent si le corpus grossissait fortement~; non nécessaire ici \\
+\bottomrule
+\end{tabularx}
+
+\vspace{0.5em}
+Le commentaire du code (\texttt{store.py:21-23}) formalise l'argument clé~: la recherche
+vectorielle représente \textbf{0,005\,\% du temps total} d'une requête (0,1~ms sur 2 à 5~secondes
+d'appel LLM) --- ce n'est jamais le goulot d'étranglement, donc l'optimiser au-delà du nécessaire
+n'aurait aucun effet perceptible.
+
+\subsection{Recherche lexicale (\texttt{\_bm25})}
+
+\textbf{Expansion de requête} (\texttt{rag/synonymes.py}, fonction \texttt{enrichir}) appliquée
+\textbf{uniquement côté BM25}~: un dictionnaire fait le pont entre le vocabulaire du citoyen
+(\textit{« prix »}, \textit{« risque »}) et celui du texte officiel (\textit{« redevance
+domaniale »}, \textit{« puni de\ldots emprisonnement »}). L'expansion \textbf{concatène} les
+synonymes à la question plutôt que de remplacer les mots d'origine --- ceux-ci gardent tout leur
+poids, les synonymes ne font qu'ouvrir des portes supplémentaires.
+
+Cette expansion n'est \textbf{volontairement pas appliquée au dense}~: ajouter des mots à une
+requête avant de l'embedder déplacerait son vecteur vers une moyenne floue, ce qui dégraderait le
+résultat au lieu de l'améliorer (l'embedding capture déjà les synonymes sémantiquement).
+
+\subsection{Fusion --- Reciprocal Rank Fusion (\texttt{\_rrf})}
+
+\begin{itemize}
+  \item Les deux classements (dense, BM25) ont des scores \textbf{non comparables} (cosinus borné
+        $[0,1]$ vs score BM25 non borné, dépendant du corpus).
+  \item RRF ignore les scores et ne garde que les \textbf{rangs}~:
+        $$score(chunk) = \sum \frac{1}{k + rang}$$
+        avec $k = 60$ (constante standard de la littérature, amortit l'écart entre les tout
+        premiers rangs).
+  \item Un chunk 1\textsuperscript{er} en dense \textbf{et} 3\textsuperscript{e} en BM25 remonte
+        devant un chunk 1\textsuperscript{er} en dense seulement --- ce que valident les deux
+        méthodes est privilégié, sans écarter ce qu'une seule des deux trouve.
+  \item \textbf{Déduplication} sur les 200~premiers caractères du texte (deux chunks identiques ne
+        doivent pas occuper deux places du top-k).
+\end{itemize}
+
+\subsubsection*{Alternative considérée~: re-ranking par cross-encoder}
+
+Une architecture plus sophistiquée ajouterait une étape de \textbf{re-ranking} (ex.
+\texttt{cross-encoder/ms-marco-MiniLM}) après la fusion RRF, qui réévalue chaque paire (question,
+chunk) conjointement plutôt que par similarité de vecteurs indépendants. Cela améliore généralement
+la précision au prix d'une latence supplémentaire. \textbf{Non implémenté actuellement} --- piste
+d'amélioration possible si les métriques (section~9) révèlent un besoin de précision plus fine sur
+le top-k.
+
+% ----------------------------------------------------------------------------
+\subsection{Étanchéité entre spécialités --- filtrage par domaine}
+\label{sec:filtrage-domaine}
+% ----------------------------------------------------------------------------
+
+Les sections~5.1 à~5.3 décrivent comment deux classements sont produits puis fusionnés --- mais ne
+disent encore rien de \textbf{quels chunks ont le droit d'entrer dans ces classements}. Un
+chasseur ne doit jamais recevoir un extrait du corpus \texttt{camper} ou \texttt{apiculture}, même
+si son vecteur est mathématiquement le plus proche de sa question. Ce filtrage est un mécanisme à
+part entière, appliqué \textbf{en amont} de \texttt{\_dense} et \texttt{\_bm25}, et non une
+conséquence de la fusion RRF.
+
+\paragraph{Où la spécialité devient une liste de domaines.}
+Chaque citoyen a une spécialité unique choisie à l'inscription (\texttt{chasseur},
+\texttt{campeur} ou \texttt{apiculteur}). \texttt{rag/config.py} fait le pont entre cette
+spécialité et les domaines du corpus~:
+
+\begin{verbatim}
+SPECIALITES = {
+    "chasseur":   "chasse",
+    "campeur":    "camper",
+    "apiculteur": "apiculture",
+}
+
+def domaines_pour(specialite: str | None) -> list[str] | None:
+    if not specialite:
+        return None
+    dom = SPECIALITES.get(specialite.strip().lower())
+    return [dom, DOMAINE_COMMUN] if dom else [DOMAINE_COMMUN]
+\end{verbatim}
+
+Un apiculteur reçoit donc \texttt{["apiculture", "app"]}~: sa réglementation propre, plus le
+domaine \texttt{app} commun à tous (aide sur l'application, création d'une alerte\ldots). Jamais
+\texttt{chasse} ni \texttt{camper}. Le cas \texttt{specialite = None} renvoie \texttt{None} (aucun
+filtre)~: un choix délibéré, réservé aux scripts de test internes (\texttt{scripts/test\_retrieval.py}),
+jamais atteint depuis l'API publique puisque \texttt{app/main.py} calcule toujours la spécialité à
+partir d'un citoyen authentifié.
+
+\paragraph{app/main.py calcule ce filtre une fois par requête.}
+\texttt{domaines = config.domaines\_pour(body.specialite)} est calculé au tout début du
+traitement de la requête, puis transmis à \texttt{Retriever.rechercher(question,
+domaines=domaines)}. Le filtre descend ensuite séparément dans les deux recherches --- et c'est là
+que les deux mécanismes divergent.
+
+\paragraph{Côté dense~: filtrage \emph{avant} le tri (\texttt{rag/store.py}).}
+\texttt{NumpyStore.query()} calcule d'abord la similarité cosinus de \textbf{tous} les chunks du
+corpus (un seul produit matriciel), puis applique un masque booléen sur la métadonnée de domaine
+\emph{avant} de sélectionner le top-k~:
+
+\begin{verbatim}
+if domaines:
+    autorises = set(domaines)
+    masque = np.array([m.get("domaine") in autorises for m in self.metas])
+    scores = np.where(masque, scores, -np.inf)
+\end{verbatim}
+
+Un chunk hors domaine reçoit un score de $-\infty$~: il ne peut plus, mathématiquement, se
+retrouver dans le top-k, quelle que soit sa proximité sémantique avec la question. L'étanchéité est
+donc garantie \emph{avant} tout classement, et non par un filtre appliqué après coup sur un
+résultat déjà exposé.
+
+\paragraph{Côté BM25~: filtrage \emph{après} le tri, par nécessité (\texttt{rag/retriever.py}).}
+La bibliothèque \texttt{rank\_bm25} ne connaît aucune notion de métadonnée ni de domaine~: elle
+renvoie un score par position dans le corpus entier, sans possibilité de filtrer en amont.
+\texttt{\_bm25()} récupère donc d'abord les $k \times 3$ meilleurs candidats tous domaines
+confondus, puis élimine ceux dont le domaine ne correspond pas~:
+
+\begin{verbatim}
+ordre = sorted(range(len(scores)), key=lambda i: -scores[i])[:k * 3]
+...
+if domaines and meta.get("domaine") not in domaines:
+    continue
+\end{verbatim}
+
+Le commentaire du code résume la raison de cette asymétrie~: \textit{« BM25 ne sait pas filtrer~:
+on applique le domaine a posteriori »}.
+
+\textbf{Limite assumée.} La marge $k \times 3$ (60~candidats bruts pour
+\texttt{TOP\_K\_BM25~=~20}) suffit en pratique, le nombre de chunks par domaine restant petit
+devant le corpus total (61~à 170~chunks par domaine sur 320~au total). Mais si une question
+renvoyait ses 60~meilleurs scores BM25 entièrement dans un autre domaine, la liste BM25 filtrée
+reviendrait vide pour cette requête précise --- la recherche dense, filtrée en amont et donc
+insensible à ce problème, continuerait néanmoins à alimenter la fusion RRF.
+
+\paragraph{Preuve que ce n'était pas une improvisation.}
+Le mécanisme de filtrage par domaine --- et le dictionnaire \texttt{SPECIALITES} qui l'alimente ---
+existaient déjà dans le code avant même que les corpus \texttt{camper} et \texttt{apiculture} ne
+soient écrits. Le commentaire de \texttt{rag/store.py} (rédigé début août~2026, plusieurs semaines
+avant l'ajout de ces deux corpus) l'atteste noir sur blanc~:
+
+\begin{quote}
+\ttfamily
+170 chunks x 1024 dimensions = une matrice de 700 Ko.\\
+Avec les corpus camper et beekeeper : \textasciitilde500 chunks, 2 Mo.
+\end{quote}
+
+Ajouter les spécialités \texttt{campeur} et \texttt{apiculteur} en septembre~2026 n'a donc
+nécessité \textbf{aucune modification} de \texttt{store.py}, \texttt{retriever.py},
+\texttt{config.py} ni \texttt{app/main.py}~: uniquement le dépôt de nouveaux fichiers \texttt{.md}
+dans \texttt{data/corpus/camper/} et \texttt{data/corpus/apiculture/}, plus 5~lignes cosmétiques
+dans \texttt{chunker.py} (un dictionnaire d'affichage, voir section~2) --- la même conclusion que
+pour le chunking multi-domaines s'applique donc aussi au filtrage par domaine.
+
+\subsubsection*{Alternative considérée~: un magasin de vecteurs séparé par domaine}
+
+\begin{tabularx}{\textwidth}{@{}l Y Y@{}}
+\toprule
+\textbf{Critère} & \textbf{Magasin partagé + filtre à la volée (retenu)} & \textbf{Un magasin séparé par domaine} \\
+\midrule
+Garantie d'étanchéité & Runtime~: masque $-\infty$ (dense) / filtre a posteriori (BM25) & Structurelle~: un chunk hors domaine n'existe physiquement pas dans le magasin interrogé \\
+Ajout d'un domaine & Déposer des \texttt{.md}, zéro ligne de code --- vérifié deux fois en pratique (camper, apiculture) & Créer et charger un nouveau magasin, adapter le code de chargement au démarrage \\
+Coût mémoire au démarrage & Un seul modèle + un seul \texttt{vecteurs.npy} chargés & $N$ magasins chargés, ou chargement paresseux à implémenter \\
+Risque en cas d'oubli du filtre & Une requête sans \texttt{domaines=} renvoie tout le corpus (comportement volontairement permis pour les tests, jamais atteint en production) & Aucun risque équivalent --- le mauvais magasin ne serait simplement jamais interrogé \\
+Complexité d'implémentation & Faible (un paramètre optionnel propagé dans deux fonctions) & Plus élevée (gestion multi-instance de \texttt{Retriever} ou de \texttt{NumpyStore}) \\
+\bottomrule
+\end{tabularx}
+
+\vspace{0.5em}
+Le filtrage à la volée sur un index partagé a été retenu pour la même raison que le découpage par
+article (section~2)~: il préserve la promesse \textit{« ajouter un domaine = déposer des fichiers,
+zéro ligne de code »}. Cette promesse a été formulée avant même que les domaines \texttt{camper} et
+\texttt{apiculture} existent, puis vérifiée deux fois en pratique sans qu'aucun des fichiers listés
+dans le tableau récapitulatif (fin de document) n'ait eu à changer.
+
+% ============================================================================
+\section{Calcul déterministe des dates (\texttt{rag/calendrier.py})}
+% ============================================================================
+
+\subsection*{Ce qui est fait}
+
+Répondre à \textit{« puis-je chasser le sanglier le 21~janvier~? »} demande de croiser sept
+conditions (espèce $\rightarrow$ période d'ouverture $\rightarrow$ jour de la semaine
+$\rightarrow$ jours fériés $\rightarrow$ exception du 15~octobre $\rightarrow$ statut
+touriste/résident $\rightarrow$ date du jour). Ce calcul est fait en \textbf{Python pur}
+(\texttt{chasse\_autorisee}), pas par le LLM.
+
+\textbf{Pourquoi ne pas laisser le LLM calculer}~: un LLM ne fait pas cette chaîne de conditions de
+façon fiable --- il produit une approximation plausible, ce qui est \textbf{pire qu'un refus}, car
+l'utilisateur ne peut pas distinguer une réponse juste d'une réponse fausse. Le commentaire du code
+cite un cas observé~: le modèle avait écrit \textit{« demain est un mercredi »} pour un mardi, en
+inventant au passage une histoire d'horaire --- la conclusion était juste, mais par un raisonnement
+faux, indétectable pour l'utilisateur.
+
+Le LLM reçoit le verdict déjà calculé (\texttt{[VERDICT CALCULÉ]} dans le prompt,
+\texttt{generator.py:180-181}) et se contente de le reformuler naturellement --- règle~6 du prompt
+système lui interdit explicitement de recalculer quoi que ce soit.
+
+\subsection*{Ce que ce module ne couvre pas (assumé, documenté dans le code)}
+
+\begin{itemize}
+  \item Les \textasciitilde800 réserves de chasse de l'article~12 (trop de variantes
+        d'orthographe pour une correspondance fiable)
+  \item Les fêtes religieuses (calendrier lunaire, non calculable par date civile)
+\end{itemize}
+
+Dans les deux cas, le système le \textbf{signale} à l'utilisateur plutôt que de deviner
+(\texttt{reserves} dans le verdict).
+
+% ============================================================================
+\section{Génération (\texttt{rag/generator.py})}
+% ============================================================================
+
+\subsection*{Ce qui est fait}
+
+\begin{itemize}
+  \item \textbf{LLM}~: Groq (\texttt{config.GROQ\_MODEL = "openai/gpt-oss-120b"}), appelé via
+        l'API officielle \texttt{groq} (\texttt{appeler\_groq}).
+  \item \textbf{Prompt système} (\texttt{prompt\_systeme})~: 11~règles numérotées --- fidélité
+        stricte aux extraits fournis, citation d'article obligatoire, prise en compte de la
+        validité temporelle d'un arrêté annuel, hiérarchie des normes (loi~>~arrêté sauf
+        dérogation légale), priorité aux avertissements de concordance, interdiction de recalculer
+        une date si un verdict est fourni, interdiction d'exposer le jargon interne à
+        l'utilisateur, réponse courte pour les politesses et le hors-sujet.
+  \item \textbf{Température basse} (\texttt{LLM\_TEMPERATURE = 0.2})~: privilégie la fidélité au
+        texte source plutôt que la créativité.
+  \item \textbf{Contexte étiqueté} (\texttt{construire\_contexte})~: chaque extrait porte sa
+        source, son article, son rang normatif et sa validité --- cet étiquetage permet au LLM
+        d'appliquer les règles de citation et de hiérarchie des normes.
+\end{itemize}
+
+\subsection*{Choix du fournisseur LLM~: comparaison}
+
+\begin{tabularx}{\textwidth}{@{}l Y c c Y@{}}
+\toprule
+\textbf{Fournisseur} & \textbf{Latence typique} & \textbf{Coût} & \textbf{Confidentialité} & \textbf{Pourquoi retenu / écarté} \\
+\midrule
+\textbf{Groq (retenu)} & \textasciitilde1~s / 300~mots (LPU dédié) & Faible / gratuit selon quota & Tiers & Seul fournisseur testé offrant une latence compatible avec un usage sur le terrain \\
+Modèle local (Llama/Mistral, CPU) & 1-2~min & Nul & Totale & Latence rédhibitoire pour le terrain ou une démonstration en direct \\
+OpenAI (GPT-4o-mini) & Quelques secondes & Payant par token & Tiers & Alternative viable, non retenue faute de nécessité \\
+Modèle local sur GPU dédié & Rapide & Coût matériel élevé & Totale & Hors de portée pour un projet étudiant/startup à ce stade \\
+\bottomrule
+\end{tabularx}
+
+\vspace{0.5em}
+Le risque assumé de cette dépendance réseau est couvert par le cache de réponses (section
+suivante), pas par un repli vers un modèle local --- jugé trop lent pour être un vrai filet de
+sécurité.
+
+% ============================================================================
+\section{Cache de réponses (\texttt{rag/cache.py})}
+% ============================================================================
+
+\begin{itemize}
+  \item Dictionnaire JSON persistant sur disque, clé = \texttt{hash(question normalisée +
+        spécialité)}.
+  \item \textbf{Pas appliqué} si la question a un historique (la réponse dépend du contexte de
+        conversation) ni si elle porte sur une date relative (\texttt{calendrier.detecter\_date})
+        --- \textit{« demain »} ne désigne pas le même jour d'un jour à l'autre
+        (\texttt{app/main.py:132}).
+  \item \textbf{Usage recommandé} documenté dans le code~: poser une fois chaque question de
+        démonstration avant la soutenance, pour que celle-ci fonctionne même hors ligne.
+\end{itemize}
+
+C'est un filet de sécurité réseau, \textbf{pas} un second modèle ni une forme d'apprentissage ---
+un simple dictionnaire clé $\rightarrow$ réponse.
+
+% ============================================================================
+\section{Ce qui manque~: métriques d'évaluation du RAG}
+% ============================================================================
+
+\textbf{Aucune métrique quantitative n'est actuellement implémentée dans le code.}
+\texttt{scripts/test\_retrieval.py} n'affiche que les chunks retrouvés pour 8~questions, à
+inspecter à l'œil (\texttt{Retriever.expliquer}) --- c'est une vérification qualitative manuelle,
+pas une évaluation chiffrée, répétable et comparable entre deux versions du système.
+
+C'est le point faible identifié pour un rapport de Master Data Science~: un jury s'attend à des
+métriques, pas seulement à \textit{« ça marche sur mes exemples »}.
+
+\subsection{Métriques de retrieval}
+
+Évaluent les étapes 4a-4c seules, sans appeler le LLM. Nécessitent un \textbf{jeu de questions
+annotées}~: pour chaque question, la liste des \texttt{id} de chunks qui devraient être retrouvés
+(le \textit{gold standard}), construit à la main à partir du corpus existant.
+
+\begin{tabularx}{\textwidth}{@{}l Y Y@{}}
+\toprule
+\textbf{Métrique} & \textbf{Ce qu'elle mesure} & \textbf{Formule / principe} \\
+\midrule
+Precision@k & Parmi les k~chunks retournés, combien sont réellement pertinents & chunks pertinents retrouvés~/~k \\
+Recall@k & Parmi tous les chunks pertinents qui existent, combien sont dans le top-k & chunks pertinents retrouvés~/~total chunks pertinents \\
+MRR (Mean Reciprocal Rank) & À quel rang apparaît le premier chunk pertinent, en moyenne & moyenne(1~/~rang du premier chunk pertinent) \\
+nDCG@k & Comme Recall@k, mais pénalise un chunk pertinent trouvé en rang~8 plus qu'en rang~1 & Somme pondérée par position, normalisée \\
+\bottomrule
+\end{tabularx}
+
+\vspace{0.5em}
+Ces métriques permettraient de répondre précisément à des questions comme~: \textit{« la fusion
+RRF améliore-t-elle vraiment le retrieval par rapport au dense seul ou au BM25 seul~? »} ---
+actuellement affirmé par le code mais jamais mesuré.
+
+\subsection{Métriques de génération}
+
+Évaluent la réponse finale du LLM. Le framework \textbf{RAGAS} (bibliothèque Python dédiée à
+l'évaluation de systèmes RAG) formalise ces métriques, calculables sans jeu de réponses de
+référence --- un second LLM juge la sortie du premier.
+
+\begin{tabularx}{\textwidth}{@{}l Y@{}}
+\toprule
+\textbf{Métrique} & \textbf{Ce qu'elle mesure} \\
+\midrule
+Faithfulness (fidélité) & La réponse s'appuie-t-elle uniquement sur les extraits fournis, ou invente-t-elle des faits~? --- mesure directement la règle~1 du prompt système \\
+Answer relevancy & La réponse répond-elle réellement à la question posée~? \\
+Context precision & Les extraits utilisés dans la réponse sont-ils parmi les plus pertinents du contexte fourni~? \\
+Context recall & Le contexte fourni contenait-il assez d'information pour répondre complètement~? \\
+\bottomrule
+\end{tabularx}
+
+\subsection{Évaluation de bout en bout}
+
+\begin{itemize}
+  \item \textbf{Exact match / évaluation humaine} sur un jeu de \textasciitilde20-30~questions
+        représentatives (couvrant les cas déjà listés dans \texttt{test\_retrieval.py}, plus des
+        questions à verdict calendaire), avec une réponse de référence rédigée à la main.
+  \item \textbf{Latence}~: déjà partiellement mesurée (\texttt{duree\_ms} dans
+        \texttt{ChatResponse}), à agréger en moyenne/percentile~95 sur un échantillon de requêtes
+        pour objectiver l'affirmation \textit{« \textasciitilde1~seconde par réponse »}.
+\end{itemize}
+
+\subsection{Ce qu'il faudrait construire avant de coder les métriques}
+
+\begin{enumerate}
+  \item Un \textbf{jeu de questions annotées} (fichier JSON, \textasciitilde20-30~entrées) avec~:
+        la question, les \texttt{id} de chunks attendus (section~9.1), une réponse de référence
+        (sections~9.2/9.3).
+  \item Un script \texttt{scripts/evaluer.py} qui charge ce jeu, appelle
+        \texttt{Retriever.rechercher()} (et éventuellement \texttt{generer()}) pour chaque
+        question, calcule les métriques et affiche un tableau récapitulatif.
+  \item Idéalement, ce script tourne \textbf{sans dépendre de Groq} pour la partie retrieval
+        (9.1) --- seule la partie génération (9.2/9.3) a besoin d'un appel LLM (soit le même via
+        Groq, soit un second modèle juge).
+\end{enumerate}
+
+% ============================================================================
+\section*{Résumé des fichiers cités}
+\addcontentsline{toc}{section}{Résumé des fichiers cités}
+% ============================================================================
+
+\begin{tabularx}{\textwidth}{@{}l Y@{}}
+\toprule
+\textbf{Fichier} & \textbf{Rôle} \\
+\midrule
+\texttt{rag/config.py} & Tous les réglages centralisés (modèle, tailles, top-k, domaines, spécialités) \\
+\texttt{rag/chunker.py} & Étape~1 --- découpage du corpus en chunks \\
+\texttt{rag/indexer.py} & Étapes~2 et 3 --- embedding + index BM25 \\
+\texttt{rag/store.py} & Magasin de vecteurs (recherche dense) \textbf{et} application du filtre de domaine côté dense \\
+\texttt{rag/synonymes.py} & Expansion de requête pour BM25 \\
+\texttt{rag/retriever.py} & Étape~4 --- recherche hybride + fusion RRF \textbf{et} application du filtre de domaine côté BM25 \\
+\texttt{rag/calendrier.py} & Calcul déterministe des dates de chasse \\
+\texttt{rag/generator.py} & Étape~5 --- prompt système + appel Groq \\
+\texttt{rag/cache.py} & Étape~6 --- cache de réponses sur disque \\
+\texttt{app/main.py} & API HTTP (\texttt{POST /api/chat/}), orchestration complète, calcul de \texttt{domaines\_pour(specialite)} \\
+\texttt{app/schemas.py} & Contrats de requête/réponse (Pydantic) \\
+\texttt{scripts/build\_index.py} & Orchestration du job d'indexation hors-ligne \\
+\texttt{scripts/test\_retrieval.py} & Vérification qualitative manuelle (existant) \\
+\texttt{scripts/diagnostic.py} & Inspection de l'index (santé, pas performance) \\
+\bottomrule
+\end{tabularx}
+
+\end{document}

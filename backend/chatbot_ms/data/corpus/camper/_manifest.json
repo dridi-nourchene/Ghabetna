@@ -1,0 +1,16 @@
+{
+  "code_forestier_camper.md": {
+    "source": "Code forestier (loi n° 88-20 du 13 avril 1988)",
+    "source_id": "code_forestier_camper",
+    "rang_normatif": "loi",
+    "rang_poids": 1,
+    "validite": "permanent"
+  },
+  "parcs_nationaux_camping.md": {
+    "source": "Arrêtés du 6 juillet 1984 sur les parcs nationaux (JORT n° 44 du 27 juillet 1984)",
+    "source_id": "arretes_parcs_1984",
+    "rang_normatif": "arrete",
+    "rang_poids": 2,
+    "validite": "permanent"
+  }
+}
