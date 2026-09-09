@@ -27,11 +27,16 @@ class StatusTrendChart extends ConsumerWidget {
             height: 220,
             child: trend.isLoading && trend.data == null
                 ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
-                : (trend.data == null || trend.data!.isEmpty)
-                    ? const Center(
-                        child: Text('Aucune donnée',
-                            style: TextStyle(fontSize: 12, color: AppColors.textMuted)))
-                    : _Chart(points: trend.data!),
+                : trend.error != null && trend.data == null
+                    ? Center(
+                        child: Text('Erreur : ${trend.error}',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontSize: 11, color: AppColors.danger)))
+                    : (trend.data == null || trend.data!.isEmpty)
+                        ? const Center(
+                            child: Text('Aucune donnée',
+                                style: TextStyle(fontSize: 12, color: AppColors.textMuted)))
+                        : _Chart(points: trend.data!),
           ),
         ],
       ),
@@ -58,6 +63,20 @@ class _Chart extends StatelessWidget {
       LineChartData(
         minY: 0,
         maxY: (maxY * 1.2).clamp(4, double.infinity),
+        lineTouchData: LineTouchData(
+          touchTooltipData: LineTouchTooltipData(
+            getTooltipColor: (_) => AppColors.primaryDark,
+            tooltipRoundedRadius: 8,
+            getTooltipItems: (touchedSpots) => [
+              for (final spot in touchedSpots)
+                LineTooltipItem(
+                  '${_seriesLabels[spot.barIndex]} : ${spot.y.round()}',
+                  const TextStyle(
+                      color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                ),
+            ],
+          ),
+        ),
         gridData: FlGridData(
           show: true,
           drawVerticalLine: false,
@@ -95,23 +114,40 @@ class _Chart extends StatelessWidget {
             ),
           ),
         ),
+        // Les séries sont tracées de la plus épaisse à la plus fine : deux statuts
+        // ayant exactement le même nombre d'alertes sur toute la période se
+        // superposent, et seule la dernière tracée resterait visible à épaisseur
+        // égale. L'écart d'épaisseur laisse dépasser les bords de celle du dessous.
         lineBarsData: [
-          _line(spots((p) => p.enCours), AppColors.warning),
-          _line(spots((p) => p.traiter), AppColors.success),
-          _line(spots((p) => p.rejeter), AppColors.danger),
+          _line(spots((p) => p.enCours), AppColors.warning, 3.2),
+          _line(spots((p) => p.traiter), AppColors.success, 2.4),
+          _line(spots((p) => p.rejeter), AppColors.danger, 1.6),
         ],
       ),
     );
   }
 
-  LineChartBarData _line(List<FlSpot> spots, Color color) => LineChartBarData(
+  LineChartBarData _line(List<FlSpot> spots, Color color, double width) =>
+      LineChartBarData(
         spots: spots,
         isCurved: true,
         color: color,
-        barWidth: 2,
-        dotData: const FlDotData(show: false),
+        barWidth: width,
+        // Points visibles : une série ne comportant qu'une seule période ne
+        // tracerait aucun segment et resterait donc invisible sans eux.
+        dotData: FlDotData(
+          show: true,
+          getDotPainter: (spot, percent, bar, index) => FlDotCirclePainter(
+            radius: 3,
+            color: color,
+            strokeWidth: 1.5,
+            strokeColor: Colors.white,
+          ),
+        ),
       );
 }
+
+const _seriesLabels = ['En cours', 'Traitées', 'Rejetées'];
 
 class _Legend extends StatelessWidget {
   const _Legend();

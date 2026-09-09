@@ -21,6 +21,11 @@ async def _proxy(request: Request, url: str) -> JSONResponse:
     return JSONResponse(status_code=response.status_code, content=response.json())
 
 
+@router.get("/overview")
+async def overview(request: Request):
+    return await _proxy(request, f"{ANALYTICS_SERVICE_URL}/api/analytics/overview")
+
+
 @router.get("/alerts-by-forest")
 async def alerts_by_forest(request: Request):
     return await _proxy(request, f"{ANALYTICS_SERVICE_URL}/api/analytics/alerts-by-forest")

@@ -7,7 +7,7 @@ from app.database import get_db
 from app.core.dependencies import require_admin
 from app.analytics_schemas import (
     AlertsByForestResponse, StatusTrendPoint, ForestTypeMatrixRow,
-    SupervisorWorkloadResponse,
+    SupervisorWorkloadResponse, OverviewResponse,
 )
 from app import analytics_service
 
@@ -16,6 +16,17 @@ router = APIRouter(prefix="/api/analytics", tags=["Analytics"])
 # Fixed for now — see spec §9. Bump to a dynamic (mean + 1 std dev) calc later
 # without touching the frontend, since it's returned in the response payload.
 REJECT_RATE_THRESHOLD = 25.0
+
+
+@router.get("/overview", response_model=OverviewResponse)
+async def overview(
+    forest_id: Optional[UUID]  = None,
+    type:      Optional[str]   = None,
+    days:      Optional[int]   = Query(None, description="Filtrer sur les N derniers jours"),
+    db:        AsyncSession    = Depends(get_db),
+    _:         UUID            = Depends(require_admin),
+):
+    return await analytics_service.get_overview(db, forest_id, type, days)
 
 
 @router.get("/alerts-by-forest", response_model=AlertsByForestResponse)
