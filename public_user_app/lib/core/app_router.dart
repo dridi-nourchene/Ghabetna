@@ -6,6 +6,7 @@ import '../features/auth/providers/auth_provider.dart';
 import '../features/auth/ui/inscription_screen.dart';
 import '../features/auth/ui/login_screen.dart';
 import '../features/chat/ui/chat_screen.dart';
+import '../features/documents/ui/documents_screen.dart';
 import 'theme.dart';
 
 /// Routeur de l'application.
@@ -18,6 +19,8 @@ import 'theme.dart';
 /// fois connecté.
 final appRouterProvider = Provider<GoRouter>((ref) {
   final statut = ref.watch(authProvider.select((a) => a.statut));
+  final specialite =
+      ref.watch(authProvider.select((a) => a.session?.specialite));
 
   return GoRouter(
     initialLocation: '/login',
@@ -28,6 +31,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (_, __) => const InscriptionScreen(),
       ),
       GoRoute(path: '/chat', builder: (_, __) => const ChatScreen()),
+      GoRoute(
+        path: '/documents',
+        builder: (_, __) => const DocumentsScreen(),
+      ),
     ],
     redirect: (context, state) {
       // Tant qu'on n'a pas lu le coffre sécurisé, on ne redirige pas.
@@ -41,6 +48,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       if (!connecte && !surAuth) return '/login';
       if (connecte && surAuth) return '/chat';
+
+      // Les formulaires apiculteur n'ont aucun sens pour un chasseur ou un
+      // campeur : un lien profond ou un retour en arrière après changement
+      // de spécialité renvoie au chat plutôt que de laisser voir cet écran.
+      if (connecte && chemin == '/documents' && specialite != 'apiculteur') {
+        return '/chat';
+      }
       return null;
     },
   );

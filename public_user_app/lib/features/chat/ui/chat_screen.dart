@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/theme.dart';
+import '../../auth/providers/auth_provider.dart';
 import '../data/chat_models.dart';
 import '../providers/chat_provider.dart';
 import 'widgets/chat_header.dart';
@@ -46,6 +48,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(chatProvider);
+    // Spécialité RÉELLE du compte (JWT), distincte de state.specialite qui
+    // n'est que le mode d'interrogation affiché — un chasseur peut le
+    // basculer sur « apiculteur » pour poser une question sans devenir
+    // apiculteur pour autant. Le bouton documents doit suivre le compte,
+    // pas ce mode d'affichage, sinon il mènerait à un écran qui le renvoie
+    // aussitôt au chat.
+    final estApiculteur = ref.watch(
+      authProvider.select((a) => a.session?.specialite == 'apiculteur'),
+    );
     ref.listen(chatProvider, (_, __) => _versLeBas());
 
     return Scaffold(
@@ -53,7 +64,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       body: Column(
         children: [
           ChatHeader(specialite: state.specialite),
-          _barreMode(state.specialite),
+          _barreMode(state.specialite, estApiculteur),
           Expanded(
             child: state.estVide
                 ? EmptyState(
@@ -73,7 +84,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   /// Indispensable : sans lui, un apiculteur qui reçoit un refus sur une
   /// question de chasse ne comprend pas pourquoi. Le sélecteur restera
   /// jusqu'à l'authentification citoyenne, où la spécialité viendra du JWT.
-  Widget _barreMode(Specialite s) {
+  Widget _barreMode(Specialite s, bool estApiculteur) {
     return Container(
       color: AppColors.surface0,
       padding: const EdgeInsets.fromLTRB(14, 9, 14, 3),
@@ -90,6 +101,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             ),
           ),
           const Spacer(),
+          // Réservé à l'apiculteur : un chasseur ou un campeur n'a aucun
+          // formulaire de colonies à consulter.
+          if (estApiculteur)
+            IconButton(
+              tooltip: 'Mes documents',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              icon: const Icon(Icons.description_outlined, size: 16,
+                  color: AppColors.textMuted),
+              onPressed: () => context.push('/documents'),
+            ),
+          const SizedBox(width: 10),
           PopupMenuButton<Specialite>(
             tooltip: 'Changer de spécialité',
             padding: EdgeInsets.zero,
