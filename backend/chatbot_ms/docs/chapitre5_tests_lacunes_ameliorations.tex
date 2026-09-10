@@ -1,0 +1,589 @@
+% ============================================================================
+% CHAPITRE 5 — À INSÉRER APRÈS « 5.10 Filtrage par domaine et spécialité »
+% ============================================================================
+% Ce fichier remplace les sections 5.11 (Génération contrôlée) et 5.12
+% (Optimisation et intégration) de la version actuelle du mémoire.
+%
+% Nouvelle numérotation obtenue :
+%   5.11  Évaluation du pipeline et limites identifiées      (nouveau)
+%   5.12  Traitement déterministe des questions temporelles  (nouveau)
+%   5.13  Génération contrôlée                               (ex-5.11, enrichie)
+%   5.14  Optimisation et intégration                        (ex-5.12, enrichie)
+%
+% Le tableau 5.6 « Comparaison des fournisseurs de modèle de langage » de la
+% version actuelle est conservé tel quel en 5.13.1 : il n'est pas reproduit ici.
+% ============================================================================
+
+
+% ============================================================================
+\section{Évaluation du pipeline et limites identifiées}
+\label{sec:eval-rag}
+% ============================================================================
+
+Après la mise en œuvre du pipeline RAG initial, des tests ont été réalisés sur
+différentes catégories de questions. Ces tests ont permis d'identifier certaines
+limites qui ne pouvaient pas être entièrement résolues par la seule recherche
+documentaire. Deux cas particuliers ont notamment été observés : les questions
+nécessitant une interprétation temporelle ou un calcul lié à une date, et la
+nécessité d'encadrer davantage la génération de la réponse finale.
+
+Ces deux constats ont donné lieu à deux mécanismes supplémentaires, décrits dans
+les sections~\ref{sec:calendrier} et~\ref{sec:generation}, qui viennent compléter
+le pipeline sans en modifier le principe : la recherche documentaire reste
+inchangée, mais son résultat n'est plus transmis seul au modèle de langage.
+
+\subsection{Protocole de test}
+
+L'évaluation a été organisée en trois niveaux, volontairement séparés : une
+défaillance de la génération et une défaillance de la recherche n'ont ni la même
+cause ni le même correctif, et les confondre dans un test unique de bout en bout
+rend le diagnostic impossible.
+
+\begin{table}[h]
+\centering
+\caption{Niveaux de test du pipeline RAG}
+\label{tab:niveaux-test}
+\begin{tabular}{|p{4.1cm}|p{5.4cm}|p{4.1cm}|}
+\hline
+\textbf{Niveau} & \textbf{Ce qu'il vérifie} & \textbf{Dépendances} \\
+\hline
+Recherche seule \newline (\texttt{test\_retrieval.py},
+point d'accès \texttt{/api/chat/debug})
+& Les articles attendus remontent-ils dans les extraits retenus ?
+Inspection qualitative des 8 questions ciblant chacune un mécanisme différent
+(dense, BM25, accents, réponse composite).
+& Index local uniquement, aucun appel au modèle de langage \\
+\hline
+Mesure quantitative \newline (\texttt{evaluer.py})
+& Métriques chiffrées et reproductibles sur le jeu de questions annotées,
+comparables entre deux versions du système.
+& Index local ; appel au modèle uniquement pour la partie génération \\
+\hline
+Calcul des dates \newline (\texttt{test\_calendrier.py})
+& Le verdict calculé est-il conforme à l'arrêté pour 9 cas couvrant chacun
+une règle distincte ?
+& Aucune : ni réseau, ni modèle d'embedding \\
+\hline
+\end{tabular}
+\end{table}
+
+\paragraph{Jeu de questions annotées.}
+La mesure quantitative suppose une référence. Un fichier
+\texttt{data/eval/gold\_standard.json} a donc été constitué : pour chaque
+question, il associe la liste des identifiants de chunks qui \emph{devraient}
+être retrouvés — vérifiés un à un dans l'index — et une réponse de référence
+rédigée à la main à partir du texte officiel. Il compte actuellement
+7~questions du domaine \texttt{chasse}, chacune documentant le mécanisme
+qu'elle cible : recherche dense lorsque la question ne partage aucun mot avec
+l'article visé, recherche lexicale lorsqu'elle contient un terme rare
+(« adjudicataires »), normalisation des accents (« Aïn Draham »), ou réponse
+composite exigeant deux articles distincts.
+
+\paragraph{Métriques retenues.}
+Les métriques de recherche sont calculées sur les $k = 8$ extraits réellement
+transmis au modèle, et non sur une valeur de $k$ choisie pour l'occasion : la
+mesure porte ainsi sur ce que le système fait, et non sur une configuration
+théorique.
+
+\begin{table}[h]
+\centering
+\caption{Métriques d'évaluation du pipeline}
+\label{tab:metriques}
+\begin{tabular}{|p{3.3cm}|p{5.6cm}|p{4.7cm}|}
+\hline
+\textbf{Métrique} & \textbf{Ce qu'elle mesure} & \textbf{Principe de calcul} \\
+\hline
+Precision@8 & Parmi les 8 extraits retournés, la proportion réellement
+pertinente & extraits pertinents retrouvés / 8 \\
+\hline
+Recall@8 & Parmi les extraits pertinents existants, la proportion présente
+dans les 8 retenus & extraits pertinents retrouvés / total attendu \\
+\hline
+MRR & Le rang auquel apparaît le premier extrait pertinent & moyenne de
+$1/\text{rang du premier extrait pertinent}$ \\
+\hline
+nDCG@8 & Comme le rappel, mais pénalise un extrait pertinent trouvé au rang 8
+plutôt qu'au rang 1 & somme pondérée par la position, normalisée \\
+\hline
+Fidélité & La réponse s'appuie-t-elle uniquement sur les extraits fournis,
+sans information ajoutée ? & un second appel au modèle juge la réponse au
+regard du contexte transmis \\
+\hline
+Pertinence & La réponse traite-t-elle réellement la question posée, sans
+digression ? & même principe, sur le couple question / réponse \\
+\hline
+Latence & Temps de réponse effectif, moyenne et 95\textsuperscript{e}
+centile & mesuré par requête et agrégé sur le jeu de test \\
+\hline
+\end{tabular}
+\end{table}
+
+Les deux dernières métriques de fidélité et de pertinence reprennent le principe
+du framework \textsc{ragas}, réimplémenté directement dans le script
+d'évaluation : un second appel au même modèle juge la sortie du premier et
+renvoie un score normalisé accompagné d'une justification. Ce choix évite une
+dépendance supplémentaire et garde le critère d'évaluation lisible dans le code.
+Lorsque le jugement ne peut pas être exploité, le score est écarté du calcul
+plutôt que compté comme nul, afin de ne pas dégrader la moyenne par un incident
+technique.
+
+\begin{table}[h]
+\centering
+\caption{Résultats de l'évaluation (jeu de 7 questions annotées, $k = 8$)}
+\label{tab:resultats-eval}
+\begin{tabular}{|p{3.3cm}|p{2.6cm}|p{7.7cm}|}
+\hline
+\textbf{Métrique} & \textbf{Valeur} & \textbf{Lecture} \\
+\hline
+% À COMPLÉTER après exécution de : python -m scripts.evaluer
+% Les valeurs sont écrites dans data/eval/resultats.json
+Precision@8 & \dots & \dots \\
+\hline
+Recall@8 & \dots & \dots \\
+\hline
+MRR & \dots & \dots \\
+\hline
+nDCG@8 & \dots & \dots \\
+\hline
+Fidélité & \dots & \dots \\
+\hline
+Pertinence & \dots & \dots \\
+\hline
+Latence moyenne & \dots & \dots \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{Limites relevées}
+
+Le tableau~\ref{tab:lacunes} récapitule les limites constatées. Certaines ont été
+observées directement dans les réponses produites lors des tests ; d'autres
+relèvent d'un risque identifié en relisant ces réponses, avant qu'il ne se
+manifeste sur une question réelle.
+
+\begin{table}[h]
+\centering
+\caption{Limites identifiées après tests et correctifs apportés}
+\label{tab:lacunes}
+\begin{tabular}{|p{4.5cm}|p{4.2cm}|p{4.6cm}|}
+\hline
+\textbf{Constat} & \textbf{Origine} & \textbf{Correctif} \\
+\hline
+Sur une question de date précise, la réponse est plausible mais le
+raisonnement est faux : le modèle a écrit « demain est un mercredi » pour un
+mardi, en inventant au passage une contrainte d'horaire matinal
+& Répondre suppose de croiser sept conditions ; le modèle en produit une
+approximation vraisemblable au lieu de refuser
+& Calcul du verdict en Python, transmis au modèle
+(section~\ref{sec:calendrier}) \\
+\hline
+Une date révolue peut être présentée comme « autorisée », l'utilisateur
+comprenant qu'il peut s'y rendre
+& Un unique état autorisé / refusé ne distingue pas une période ouverte d'une
+période écoulée
+& Troisième état « date passée », indépendant de l'autorisation
+(section~\ref{sec:verdict}) \\
+\hline
+Le verdict fourni est reformulé avec des circonstances que l'utilisateur n'a
+pas mentionnées (heure, lieu, matériel)
+& Le verdict était transmis comme un extrait parmi d'autres, sans statut
+particulier
+& Ligne « réponse à donner » placée en tête du verdict et règle interdisant
+tout recalcul (section~\ref{sec:prompt}) \\
+\hline
+Le vocabulaire interne du système apparaît dans la réponse
+& Aucune consigne ne précisait que ces blocs sont invisibles pour
+l'utilisateur
+& Règle de restitution : reformuler les réserves en langage courant
+(section~\ref{sec:prompt}) \\
+\hline
+Une période d'arrêté déjà écoulée est présentée comme en vigueur
+& La date du jour n'était pas transmise au modèle
+& Date calculée dynamiquement à chaque appel et règle de validité temporelle
+(section~\ref{sec:prompt}) \\
+\hline
+Réponses longues et hors sujet sur une salutation ou une question étrangère
+au domaine
+& Aucun cas prévu pour les messages ne comportant pas de question
+réglementaire
+& Deux règles de brièveté, une phrase par réponse
+(section~\ref{sec:prompt}) \\
+\hline
+« quel est le prix du permis » ne remonte aucun montant chiffré ; « que
+risque un chasseur » aucune sanction
+& Écart de vocabulaire entre l'usager et le texte officiel, qui dit
+« redevance domaniale » et « est puni de »
+& Expansion de requête côté recherche lexicale (section~5.9.3) \\
+\hline
+Les réponses composites sont tronquées : le montant du permis relève de deux
+articles, les sanctions de trois
+& Nombre d'extraits transmis trop faible
+& Passage à 8 extraits retenus, pour un surcoût de contexte négligeable \\
+\hline
+Une question de suivi telle que « et pour le lièvre ? » ne retrouve rien
+& Prise isolément, elle ne contient aucun mot-clé exploitable
+& Concaténation du tour précédent à la requête de recherche uniquement \\
+\hline
+\end{tabular}
+\end{table}
+
+Les trois derniers constats concernent des réglages du pipeline déjà décrit :
+ils ont été corrigés par un ajustement de la recherche, sans nouveau composant.
+Les six premiers, en revanche, portent tous sur ce qui se passe \emph{après} la
+recherche documentaire — le traitement des dates et le contrôle de la
+génération. Ils ont conduit aux deux ajouts présentés ci-après.
+
+
+% ============================================================================
+\section{Traitement déterministe des questions temporelles}
+\label{sec:calendrier}
+% ============================================================================
+
+\subsection{Pourquoi la recherche documentaire ne suffit pas}
+
+La question « puis-je chasser le sanglier le 21 janvier ? » n'admet pas de
+réponse directement récupérable dans un article : aucun texte ne l'énonce. Y
+répondre suppose de croiser sept conditions successives :
+
+\begin{enumerate}
+  \item l'espèce citée, qui détermine la période applicable ;
+  \item la période d'ouverture correspondante (article premier de l'arrêté) ;
+  \item le jour de la semaine, tous les jours n'étant pas ouverts (article 4) ;
+  \item les jours fériés officiels, qui ouvrent des jours normalement fermés ;
+  \item les exceptions géographiques, dont l'interdiction du 15 octobre 2025
+        dans les gouvernorats d'Ariana et de Bizerte ;
+  \item le statut du demandeur, la chasse touristique étant restreinte à
+        certaines espèces (article 18) ;
+  \item la date du jour, qui détermine si la saison est encore en cours.
+\end{enumerate}
+
+Les tests ont montré qu'un modèle de langage n'exécute pas cette chaîne de façon
+fiable. Il en produit une approximation vraisemblable, ce qui est plus dommageable
+qu'un refus : l'utilisateur ne dispose d'aucun moyen de distinguer une réponse
+juste d'une réponse fausse. Le cas relevé est instructif : la conclusion était
+correcte, mais obtenue par un raisonnement faux — un mardi qualifié de mercredi,
+et une contrainte d'horaire inventée. Une conclusion juste par accident n'est pas
+une réponse fiable, puisque rien ne garantit que le même raisonnement
+produira une conclusion juste la fois suivante.
+
+Ce calcul a donc été retiré au modèle et confié à un module Python dédié,
+\texttt{rag/calendrier.py}. Le raisonnement y devient déterministe, testable et
+auditable : les mêmes entrées produisent toujours le même verdict, et chaque
+règle appliquée renvoie à l'article dont elle est issue.
+
+\subsection{Données de référence}
+
+Le module encode les neuf groupes d'espèces de l'arrêté du 27 août 2025, avec
+pour chacun sa période, ses jours autorisés et ses restrictions propres. Les
+sept jours fériés civils à date fixe y figurent également.
+
+\begin{table}[h]
+\centering
+\caption{Périodes et jours de chasse encodés (arrêté du 27 août 2025)}
+\label{tab:especes}
+\begin{tabular}{|p{3.5cm}|p{3.4cm}|p{4.3cm}|p{1.6cm}|}
+\hline
+\textbf{Groupe d'espèces} & \textbf{Période} & \textbf{Jours autorisés} &
+\textbf{Article} \\
+\hline
+Petit gibier sédentaire (lièvre, perdrix, caille sédentaire, pigeon biset,
+ganga unibande) & 5 oct. 2025 au 7 déc. 2025 & Dimanches et jours fériés
+officiels & 1 et 4 \\
+\hline
+Gros gibier (sanglier, loup doré africain) & 5 oct. 2025 au
+1\textsuperscript{er} févr. 2026, reporté au 26 avr. 2026 dans huit
+gouvernorats du sud & Tous les jours de la semaine & 1 et 4 \\
+\hline
+Pigeon ramier & 9 nov. 2025 au 15 mars 2026 & Du mercredi au dimanche et
+jours fériés & 1 et 4 \\
+\hline
+Gibier d'eau & 9 nov. 2025 au 15 mars 2026 & Du mercredi au dimanche et
+jours fériés & 1 et 4 \\
+\hline
+Grives et étourneaux & 9 nov. 2025 au 15 mars 2026 ; du 7 déc. 2025 au
+15 mars 2026 pour les touristes & Du mercredi au dimanche et jours fériés &
+1, 4 et 18 \\
+\hline
+Bécasse des bois & 9 nov. 2025 au 15 mars 2026 & Du mercredi au dimanche et
+jours fériés, dans neuf gouvernorats, sans battue ni poste & 1 et 4 \\
+\hline
+Caille à l'épervier & 5 avr. 2026 au 28 juin 2026 & Selon l'article 4,
+gouvernorat de Nabeul uniquement & 1 \\
+\hline
+Tourterelle de passage et sédentaire & 26 juil. 2026 au 20 sept. 2026 & Du
+mercredi au samedi à partir de 15 h, toute la journée les dimanches et jours
+fériés & 1 et 4 \\
+\hline
+Gangas (cata, tacheté, couronné) & 26 juil. 2026 au 20 sept. 2026 & Du
+mercredi au dimanche et jours fériés & 1 et 4 \\
+\hline
+\end{tabular}
+\end{table}
+
+L'espèce est reconnue dans la question par correspondance sur une liste de
+dénominations courantes, y compris les appellations locales, en testant les
+expressions les plus longues d'abord : « caille à l'épervier » doit primer sur
+« caille », et « pigeon ramier » sur « pigeon biset ». La date est reconnue sous
+plusieurs formes — « aujourd'hui », « demain », « le 21 janvier », « 21/01/2026 ».
+Lorsque l'année n'est pas précisée, celle qui place la date dans la saison en
+cours ou à venir est retenue, plutôt qu'une année arbitraire.
+
+\subsection{Le verdict et ses trois états}
+\label{sec:verdict}
+
+Le résultat du calcul n'est pas un booléen mais une structure comportant
+l'autorisation, l'indication que la date est révolue, la liste des constats
+ayant conduit au verdict et la liste des points que le calcul ne couvre pas.
+
+La distinction entre « autorisé » et « passé » est un enseignement direct des
+tests. Ces deux propriétés sont indépendantes : le 21 janvier 2026 tombait dans
+la période d'ouverture du gros gibier, mais annoncer cette date « autorisée »
+aujourd'hui laisserait entendre que l'utilisateur peut s'y rendre. Le verdict
+énonce donc trois états — autorisé, non autorisé, date passée — et le troisième
+prime sur les deux premiers dans la formulation transmise au modèle.
+
+Le module produit également une phrase de conclusion en français courant, que le
+modèle n'a plus qu'à reformuler. Cette phrase est placée \emph{avant} le détail
+du raisonnement dans le bloc transmis, et non après : reléguée en fin de bloc,
+elle se trouvait noyée dans les constats et le modèle reconstruisait son propre
+raisonnement à partir de ceux-ci, avec le résultat décrit plus haut.
+
+\subsection{Ce que le calcul ne couvre pas}
+
+Deux points ont été délibérément laissés hors du calcul, parce qu'ils ne peuvent
+pas être traités de façon fiable :
+
+\begin{itemize}
+  \item les réserves de chasse énumérées à l'article 12, qui recensent plusieurs
+        centaines de toponymes dont l'orthographe varie trop pour permettre une
+        correspondance sûre ;
+  \item les fêtes religieuses, qui suivent le calendrier lunaire et ne se
+        déduisent pas d'une date civile — or elles ouvrent des jours
+        normalement fermés.
+\end{itemize}
+
+Dans les deux cas, le verdict le signale explicitement au lieu de deviner. Ces
+réserves sont transmises au modèle, qui doit les restituer à l'utilisateur : une
+réponse indiquant qu'il reste à vérifier si le jour est férié, ou si le lieu
+figure parmi les réserves, est préférable à une réponse affirmative qui
+ignorerait ces conditions. La limite du calcul devient ainsi une information
+utile plutôt qu'un silence.
+
+\subsection{Restitution à l'interface}
+
+Le verdict est exposé sous deux formes. La première est le bloc de texte injecté
+dans le prompt, destiné au modèle. La seconde est une structure sérialisable
+destinée à l'application : un état, une phrase courte pour le bandeau
+(« Non, pas demain »), l'espèce reconnue et, lorsque la réponse est négative, la
+date de la prochaine ouverture. Cette dernière est obtenue en parcourant les
+jours suivants jusqu'à en trouver un qui satisfasse à la fois la période et les
+jours autorisés. L'interface peut ainsi afficher une information exploitable là
+où le système ne renvoyait qu'un refus.
+
+Le calcul des dates a par ailleurs une conséquence sur le cache de réponses :
+une question portant sur une date n'y est jamais enregistrée, « demain » ne
+désignant pas le même jour d'un jour à l'autre.
+
+\subsection{Validation}
+
+Le module est validé par un jeu de cas exécutable sans réseau ni modèle
+d'embedding, ce qui le rend rejouable à chaque modification. Chaque cas vérifie
+le couple (date passée, autorisation) plutôt que la seule autorisation, afin que
+la distinction introduite plus haut soit elle aussi testée. Les cas sont évalués
+à une date de référence fixe, faute de quoi leur résultat changerait avec le jour
+d'exécution.
+
+\begin{table}[h]
+\centering
+\caption{Cas de validation du calcul des dates (date de référence :
+10 août 2026)}
+\label{tab:cas-calendrier}
+\begin{tabular}{|p{4.9cm}|p{2.4cm}|p{6.1cm}|}
+\hline
+\textbf{Cas} & \textbf{Attendu} & \textbf{Règle vérifiée} \\
+\hline
+Tourterelle, 12 août 2026 & Autorisé & Période en cours et jour de la semaine
+autorisé \\
+\hline
+Tourterelle, 10 août 2026 & Refusé & Un lundi ne figure pas parmi les jours
+ouverts (article 4) \\
+\hline
+Sanglier, aujourd'hui & Refusé & La saison 2025/2026 est fermée depuis
+février \\
+\hline
+Sanglier, 21 janvier 2026 & Passée, alors ouverte & Une date révolue ne
+s'annonce pas autorisée \\
+\hline
+Sanglier, 20 mars 2026 à Tozeur & Passée, alors ouverte & Fermeture reportée
+dans les huit gouvernorats du sud \\
+\hline
+Sanglier, 20 mars 2026 à Bizerte & Passée et fermée & Hors de ces huit
+gouvernorats, la période était déjà close \\
+\hline
+Touriste, tourterelle, 12 août 2026 & Refusé & Chasse touristique limitée au
+gros gibier et aux grives (article 18) \\
+\hline
+Lièvre, 21 janvier 2026 & Passée et fermée & Le petit gibier ferme dès le
+7 décembre \\
+\hline
+Ganga, 16 août 2026 & Autorisé & Un dimanche est ouvert et la période est en
+cours \\
+\hline
+\end{tabular}
+\end{table}
+
+
+% ============================================================================
+\section{Génération contrôlée}
+\label{sec:generation}
+% ============================================================================
+
+Le contexte assemblé — extraits retenus par la recherche et verdict éventuel
+calculé par le module précédent — est transmis au modèle de langage chargé de
+formuler la réponse finale. Les tests ont montré que fournir un bon contexte ne
+suffit pas : encore faut-il contraindre ce que le modèle en fait. Cette
+génération est donc \emph{contrôlée} : le modèle ne dispose d'aucune liberté
+d'invention, sa tâche se limite à interpréter et reformuler ce qui lui est
+fourni, jamais à rechercher ou à calculer par lui-même.
+
+\subsection{Fournisseur du modèle de langage}
+
+% Conserver ici le tableau 5.6 de la version actuelle du mémoire
+% (« Comparaison des fournisseurs de modèle de langage »), inchangé.
+
+\subsection{Assemblage du contexte}
+
+L'ordre dans lequel les éléments sont présentés au modèle n'est pas neutre. Le
+verdict est placé avant les extraits, car il fait autorité sur la question de
+date, les extraits ne servant qu'à l'étayer. Chaque extrait porte ensuite son
+étiquetage complet : source, article, rang normatif et validité. C'est cet
+étiquetage qui rend applicables les règles de citation, de validité temporelle et
+de hiérarchie des normes énoncées ci-après — sans lui, le modèle ne pourrait ni
+citer un article, ni détecter une période close, ni arbitrer entre une loi et un
+arrêté.
+
+Les tours de conversation précédents sont transmis séparément, sous forme
+d'échanges classiques, et leur nombre est borné : au-delà de quelques échanges,
+l'ancien contexte devient du bruit. Les extraits, eux, restent attachés au
+dernier message : ils sont propres à la question courante, et il serait faux de
+les rattacher aux tours antérieurs.
+
+\subsection{Prompt système}
+\label{sec:prompt}
+
+Le comportement du modèle est encadré par onze règles numérotées. Plusieurs
+d'entre elles ne relèvent pas d'une précaution théorique mais répondent
+directement à un comportement observé lors des tests.
+
+\begin{table}[h]
+\centering
+\caption{Règles du prompt système et lacune visée}
+\label{tab:regles-prompt}
+\begin{tabular}{|p{3.4cm}|p{10.3cm}|}
+\hline
+\textbf{Règle} & \textbf{Ce qu'elle impose, et pourquoi} \\
+\hline
+1. Fidélité & Répondre uniquement à partir des extraits fournis et le dire
+lorsque l'information n'y figure pas, plutôt que de compléter par des
+connaissances générales : c'est la règle dont la métrique de fidélité mesure le
+respect \\
+\hline
+2. Citation & Indiquer le texte et le numéro d'article pour toute règle
+juridique, de sorte que l'utilisateur puisse vérifier ; inutile pour les
+questions portant sur l'application \\
+\hline
+3. Validité temporelle & Comparer la validité de l'extrait à la date du jour et
+prévenir si la période est écoulée : la date est recalculée à chaque appel,
+jamais écrite en dur, sans quoi le système annoncerait des périodes closes comme
+en vigueur \\
+\hline
+4. Hiérarchie des normes & En cas d'apparente contradiction, la loi prime sur
+l'arrêté ; mais un arrêté peut légalement prévoir une dérogation, et il faut
+alors le signaler au lieu de conclure à une contradiction \\
+\hline
+5. Avertissements & Traiter en priorité les extraits signalant un renvoi
+périmé, produits comme tels au moment du découpage du corpus \\
+\hline
+6. Dates & Ne jamais calculer soi-même si une date est autorisée. Lorsqu'un
+verdict est fourni, sa ligne « réponse à donner » est la réponse : elle se
+reformule sans changer de sens, et ni le jour de la semaine, ni la période, ni
+l'espèce ne se recalculent ; aucune circonstance que l'utilisateur n'a pas
+mentionnée ne doit être ajoutée. À défaut de verdict, exposer la règle et
+inviter à vérifier, sans conclure à la place de l'utilisateur \\
+\hline
+7. Aucun jargon interne & L'utilisateur ne voit ni les extraits, ni les blocs
+transmis au modèle : ces termes ne doivent jamais apparaître dans la réponse.
+Une réserve se restitue en langage courant — « pensez à vérifier si ce jour est
+férié » — et non par une mention du mécanisme interne \\
+\hline
+8. Messages sans question & Répondre par une seule phrase courte à une
+salutation ou un remerciement, sans se présenter ni énumérer ses compétences \\
+\hline
+9. Sécurité & En cas de doute sur une question réglementaire, inviter à
+contacter l'arrondissement régional des forêts \\
+\hline
+10. Forme & Répondre brièvement et directement, sans titres ni listes sauf
+nécessité, et dans la langue de la question, y compris en arabe ou en dialecte
+tunisien \\
+\hline
+11. Hors sujet & Répondre en une phrase et rappeler son domaine, sans décrire
+le contenu des extraits ni demander de reformuler la question \\
+\hline
+\end{tabular}
+\end{table}
+
+La température du modèle est par ailleurs fixée à une valeur basse (0,2), qui
+privilégie la fidélité au texte source plutôt que la créativité rédactionnelle,
+et la longueur de la réponse est bornée. Ces deux réglages vont dans le même sens
+que les règles ci-dessus : sur un corpus réglementaire, la variabilité de
+formulation n'apporte rien et le risque d'écart au texte augmente avec elle.
+
+\subsection{Sources restituées avec la réponse}
+
+Le contrôle de la génération ne repose pas uniquement sur le prompt. La réponse
+renvoyée à l'application est accompagnée des sources effectivement transmises au
+modèle — texte, article, gouvernorat et validité — que l'interface affiche sous
+la réponse. L'utilisateur peut ainsi remonter au texte officiel, ce qui rend une
+éventuelle imprécision détectable au lieu de rester invisible. Seuls les extraits
+de nature normative y figurent, et au plus quatre : les contenus d'aide sur
+l'application n'ont pas de source réglementaire à citer, et une liste plus longue
+que la réponse elle-même nuirait à sa lisibilité.
+
+
+% ============================================================================
+\section{Optimisation et intégration}
+\label{sec:optimisation}
+% ============================================================================
+
+Deux derniers éléments complètent le système sans modifier son fonctionnement :
+un cache de réponses, qui réduit la dépendance au réseau, et une API qui expose
+l'ensemble du pipeline à l'application Ghabetna.
+
+Le modèle d'embedding et les index sont chargés une seule fois, au démarrage du
+service, plutôt qu'à chaque question : leur chargement prend plusieurs secondes,
+ce qui serait incompatible avec un temps de réponse raisonnable s'il devait être
+répété à chaque requête. Le service reste par ailleurs sans état : l'historique
+de conversation est conservé par l'application et renvoyé à chaque appel, ce qui
+permet de répliquer le service sans coordination et lui évite toute base de
+données propre.
+
+Chaque question reçue par l'API traverse alors l'ensemble du pipeline déjà
+décrit — recherche, filtrage par domaine, calcul éventuel du verdict, génération
+— avant que la réponse ne soit renvoyée avec ses sources et le verdict éventuel.
+Un second point d'accès expose uniquement le résultat de la recherche, sans
+appeler le modèle de langage : il a permis de vérifier la pertinence des extraits
+retrouvés pour les nouveaux domaines camper et apiculture sans consommer de quota
+d'appel, et sert de premier niveau de diagnostic lorsqu'une réponse paraît
+incorrecte — il indique si le problème vient de la recherche ou de la génération.
+
+Un cache de réponses, sous la forme d'un simple dictionnaire persistant sur
+disque dont la clé combine la question normalisée et la spécialité, sert de filet
+de sécurité réseau : il n'est ni un second modèle, ni une forme d'apprentissage.
+Il n'est volontairement pas appliqué lorsque la question s'inscrit dans un
+historique de conversation, la réponse dépendant alors du contexte précédent, ni
+lorsqu'elle porte sur une date, pour la raison exposée en
+section~\ref{sec:calendrier}. La spécialité entre dans la clé parce qu'un
+chasseur et un apiculteur qui posent la même question interrogent des corpus
+différents et doivent donc recevoir des réponses différentes. Posé une fois pour
+chaque question de démonstration avant une présentation, ce cache permet au
+système de continuer à répondre même en l'absence de connexion réseau.

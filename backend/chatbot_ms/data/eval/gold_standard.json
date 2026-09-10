@@ -1,0 +1,61 @@
+{
+  "_comment": "Jeu de questions annotées pour l'évaluation du RAG (section 9.4 de architecture_rag.pdf). Reprend les 8 questions de scripts/test_retrieval.py, en y ajoutant les id de chunks attendus (verifiés dans data/index/chunks.json) et une réponse de référence rédigée à la main à partir du texte officiel. Domaine 'chasse' uniquement pour l'instant — étendre à app/camper/apiculture au fil de l'ajout de nouvelles questions.",
+  "questions": [
+    {
+      "id": "q1",
+      "question": "quelle est la période de chasse du sanglier ?",
+      "domaines": ["chasse", "app"],
+      "cible_mecanisme": "dense (aucun mot commun avec le chunk)",
+      "chunks_attendus": ["arrete_2025_art1_gros_gibier_sanglier_et_loup_d"],
+      "reponse_reference": "La période de chasse du sanglier est fixée par le tableau de l'article premier de l'arrêté du 27 août 2025, dans la ligne « Gros gibier : sanglier et loup »."
+    },
+    {
+      "id": "q2",
+      "question": "j'ai le droit de chasser dans un périmètre loué ?",
+      "domaines": ["chasse", "app"],
+      "cible_mecanisme": "BM25 (terme rare : adjudicataires)",
+      "chunks_attendus": ["arrete_2025_art14"],
+      "reponse_reference": "L'article 14 de l'arrêté du 27 août 2025 réglemente la chasse dans les périmètres loués : elle est réservée aux adjudicataires du périmètre."
+    },
+    {
+      "id": "q3",
+      "question": "puis-je chasser à Aïn Draham ?",
+      "domaines": ["chasse", "app"],
+      "cible_mecanisme": "BM25 sans accents (normalisation NFD)",
+      "chunks_attendus": ["arrete_2025_art12_jendouba"],
+      "reponse_reference": "Aïn Draham se situe dans le gouvernorat de Jendouba : les réserves de chasse concernées figurent dans la section « Jendouba » de l'article 12 de l'arrêté."
+    },
+    {
+      "id": "q4",
+      "question": "combien de lièvres puis-je tuer par jour ?",
+      "domaines": ["chasse", "app"],
+      "cible_mecanisme": "dense + BM25",
+      "chunks_attendus": ["arrete_2025_art5"],
+      "reponse_reference": "L'article 5 de l'arrêté du 27 août 2025 fixe le nombre maximal de lièvres autorisé par chasseur et par jour de chasse."
+    },
+    {
+      "id": "q5",
+      "question": "est-ce que je peux chasser la nuit ?",
+      "domaines": ["chasse", "app"],
+      "cible_mecanisme": "dense (aucun mot commun : article 172)",
+      "chunks_attendus": ["code_forestier_art172"],
+      "reponse_reference": "L'article 172 du code forestier (loi n° 88-20) interdit la chasse de nuit, sauf dérogation explicitement prévue."
+    },
+    {
+      "id": "q6",
+      "question": "quelles armes sont interdites à la chasse ?",
+      "domaines": ["chasse", "app"],
+      "cible_mecanisme": "BM25",
+      "chunks_attendus": ["arrete_2025_art15"],
+      "reponse_reference": "L'article 15 de l'arrêté du 27 août 2025 liste les armes et procédés de chasse interdits pour la saison en cours."
+    },
+    {
+      "id": "q7",
+      "question": "quel est le prix du permis de chasse ?",
+      "domaines": ["chasse", "app"],
+      "cible_mecanisme": "réponse composite (deux articles)",
+      "chunks_attendus": ["arrete_2025_art2", "arrete_2025_art3_p1"],
+      "reponse_reference": "Le montant de la cotisation à verser par chasseur est fixé par l'article 2 (50 dinars pour les Tunisiens et résidents, 100 dinars pour les résidents temporaires) ; les tarifs du permis lui-même sont détaillés à l'article 3."
+    }
+  ]
+}

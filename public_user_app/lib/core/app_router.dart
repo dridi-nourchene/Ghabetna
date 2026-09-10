@@ -10,9 +10,9 @@ import '../features/profil/ui/profil_screen.dart';
 import '../features/auth/ui/inscription_screen.dart';
 import '../features/auth/ui/login_screen.dart';
 import '../features/chat/ui/chat_screen.dart';
+import '../features/documents/ui/documents_screen.dart';
 import 'theme.dart';
 import 'widgets/barre_navigation.dart';
-import 'widgets/ecran_a_venir.dart';
 
 /// Routeur de l'application.
 ///
@@ -24,6 +24,8 @@ import 'widgets/ecran_a_venir.dart';
 /// fois connecté.
 final appRouterProvider = Provider<GoRouter>((ref) {
   final statut = ref.watch(authProvider.select((a) => a.statut));
+  final specialite =
+      ref.watch(authProvider.select((a) => a.session?.specialite));
 
   return GoRouter(
     initialLocation: '/login',
@@ -49,13 +51,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/accueil', builder: (_, __) => const AccueilScreen()),
           GoRoute(
             path: '/documents',
-            builder: (_, __) => const EcranAVenir(
-              titre: 'Documents',
-              description:
-                  'Les textes qui s\'appliquent à votre spécialité, '
-                  'et les pièces de votre dossier.',
-              icone: Icons.description_outlined,
-            ),
+            builder: (_, __) => const DocumentsScreen(),
           ),
           GoRoute(path: '/profil', builder: (_, __) => const ProfilScreen()),
         ],
@@ -83,6 +79,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       // Le point d'arrivée après connexion est l'accueil, plus le chat :
       // l'assistant est devenu un onglet parmi cinq.
       if (connecte && surAuth) return '/accueil';
+
+      // Les formulaires apiculteur n'ont aucun sens pour un chasseur ou un
+      // campeur : un lien profond ou un retour en arrière après changement
+      // de spécialité renvoie à l'accueil plutôt que de laisser voir cet
+      // écran.
+      if (connecte && chemin == '/documents' && specialite != 'apiculteur') {
+        return '/accueil';
+      }
       return null;
     },
   );
