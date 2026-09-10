@@ -8,10 +8,11 @@ from fastapi import HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.alert import Alert, AlertStatus, LocationSource
+from app.models.alert import Alert, AlertStatus, AlertSource, LocationSource
 from app.models.assignment_cache import AssignmentCache
 from app.schemas.alert import AlertCreate, AlertStatusUpdate
 from app.core.config import settings
+from app import enrichment_client
 
 from app.core.redis_client import get_redis
 from app.core.streams import STREAM_ALERT_CREATED, STREAM_ALERT_STATUS_UPDATED
@@ -48,8 +49,9 @@ async def _get_agent_info(db: AsyncSession, agent_id: UUID) -> dict:
         "phone": agent.agent_phone or "",
     }
 
-async def _get_zone_agents_enriched(db: AsyncSession, forest_id: UUID, 
-                                     exclude_parcelle_id: Optional[UUID] = None) -> list[dict]:
+async def _get_zone_agents_enriched(db: AsyncSession, forest_id: UUID,
+                                     exclude_parcelle_id: Optional[UUID] = None,
+                                     exclude_agent_id: Optional[UUID] = None) -> list[dict]:
     result = await db.execute(
         select(AssignmentCache).where(
             AssignmentCache.forest_id == forest_id
@@ -57,13 +59,21 @@ async def _get_zone_agents_enriched(db: AsyncSession, forest_id: UUID,
     )
     agents = result.scalars().all()
     print(f"[DEBUG] Forest {forest_id} → {len(agents)} agents in cache")
-    
+
     agents_list = []
     for a in agents:
+        # Exclusion par identité : le signalant ne doit JAMAIS réapparaître
+        # dans "Agents dans la zone", quelle que soit sa parcelle — avant,
+        # seule une correspondance de parcelle l'excluait (utile en plus
+        # pour ne pas montrer un doublon d'un agent de la même parcelle),
+        # ce qui le laissait passer dès que la localisation était
+        # approximative (forest_only/agent_gps).
+        if exclude_agent_id and a.agent_id == exclude_agent_id:
+            continue
         if exclude_parcelle_id and a.parcelle_id == exclude_parcelle_id:
             print(f"[DEBUG] Excluding agent {a.agent_id} (same parcelle)")
             continue
-        
+
         if not a.agent_nom:
             print(f"[DEBUG] Skipping agent {a.agent_id} (no name in cache)")
             continue
@@ -127,27 +137,19 @@ async def _alert_to_dict(
     """
     Construit la réponse enrichie avec :
     - agent_nom / agent_phone : infos agent émetteur
-    - forest_name : nom forêt si localisation approximative
+    - forest_name : nom de la forêt choisie dans le formulaire — toujours
+      résolu, quelle que soit la précision de la localisation
     - zone_agents : agents dans la zone enrichis avec nom, phone, parcelle_name
     """
     # 1. Infos agent émetteur
     agent_info = await _get_agent_info(db, alert.agent_id)
 
-    # 2. Forest name (seulement si approximatif)
-    forest_name = None
-    if alert.location_source in (
-        LocationSource.forest_only,
-        LocationSource.agent_gps,
-    ):
-        # Récupérer forest_name depuis AssignmentCache
-        result = await db.execute(
-            select(AssignmentCache)
-            .where(AssignmentCache.forest_id == alert.forest_id)
-            .limit(1)
-        )
-        cache_row = result.scalar_one_or_none()
-        if cache_row:
-            forest_name = cache_row.forest_name
+    # 2. Nom de la forêt — toujours résolu via forest_ms, pas seulement pour
+    # les localisations approximatives. AssignmentCache ne suffirait pas ici :
+    # elle ne connaît une forêt que si un agent y est actuellement affecté,
+    # ce qui laisserait des alertes sans nom de forêt même si le formulaire
+    # en a bien enregistré un.
+    forest_name = await enrichment_client.get_forest_name(alert.forest_id)
 
     # 3. Agents de la zone
     # Si EXIF (position exacte) → exclure les agents de la même parcelle
@@ -165,9 +167,10 @@ async def _alert_to_dict(
             exclude_parcelle = agent_assignment.parcelle_id
     
     zone_agents = await _get_zone_agents_enriched(
-        db, 
+        db,
         alert.forest_id,
-        exclude_parcelle_id=exclude_parcelle
+        exclude_parcelle_id=exclude_parcelle,
+        exclude_agent_id=alert.agent_id,
     )
     return {
         "id":                 str(alert.id),
@@ -175,6 +178,7 @@ async def _alert_to_dict(
         "forest_id":          str(alert.forest_id),   
         "type":               alert.type.value,
         "status":             alert.status.value,
+        "source":             alert.source.value,
         "description":        alert.description,
         "agent_nom":          agent_info.get("nom"),
         "agent_phone":        agent_info.get("phone"),
@@ -217,6 +221,17 @@ def _resolve_location(data: AlertCreate):
     if data.incident_lat is not None and data.incident_lng is not None:
         geom = f"SRID=4326;POINT({data.incident_lng} {data.incident_lat})"
         return data.incident_lat, data.incident_lng, LocationSource.exif, geom
+
+    # La photo n'avait pas de GPS EXIF (très fréquent : beaucoup de
+    # téléphones ne géotaguent pas par défaut) — on retombe sur la position
+    # du téléphone au moment de l'envoi plutôt que d'abandonner toute
+    # localisation. LocationSource.agent_gps existait déjà dans le modèle
+    # mais n'était jamais produit : c'est le bug qui faisait disparaître la
+    # position dès que l'EXIF échouait, alors qu'elle avait été captée.
+    if data.agent_lat is not None and data.agent_lng is not None:
+        geom = f"SRID=4326;POINT({data.agent_lng} {data.agent_lat})"
+        return data.agent_lat, data.agent_lng, LocationSource.agent_gps, geom
+
     return None, None, LocationSource.forest_only, None
 
 
@@ -226,6 +241,7 @@ async def create_alert(
     db:       AsyncSession,
     data:     AlertCreate,
     agent_id: UUID,
+    source:   AlertSource = AlertSource.agent,
     image:    Optional[UploadFile] = None,
 ) -> dict:
     incident_lat, incident_lng, location_source, geom = _resolve_location(data)
@@ -247,6 +263,7 @@ async def create_alert(
         image_path      = image_path,
         agent_id        = agent_id,
         forest_id       = data.forest_id,
+        source          = source,
     )
     db.add(alert)
     await db.commit()
@@ -325,11 +342,16 @@ async def get_supervisor_map_points(
     if not forest_ids:
         return []
 
+    # Seules les alertes encore actives ont leur place sur la carte : une
+    # fois traitée ou rejetée, l'incident n'appelle plus d'action et son
+    # marqueur ne fait qu'encombrer la vue (et masquer d'autres alertes
+    # réellement en attente). L'historique reste le bon endroit pour
+    # consulter les alertes déjà traitées.
     result = await db.execute(
         select(Alert)
         .where(
             Alert.forest_id.in_(forest_ids),
-            Alert.status != AlertStatus.rejeter,
+            Alert.status == AlertStatus.en_cours,
         )
         .order_by(Alert.created_at.desc())
     )
@@ -338,6 +360,7 @@ async def get_supervisor_map_points(
             "id":              str(a.id),
             "type":            a.type.value,
             "status":          a.status.value,
+            "source":          a.source.value,
             "incident_lat":    a.incident_lat,
             "incident_lng":    a.incident_lng,
             "location_source": a.location_source.value,
@@ -359,6 +382,7 @@ async def get_map_points(db: AsyncSession) -> list[dict]:
             "id":              str(a.id),
             "type":            a.type.value,
             "status":          a.status.value,
+            "source":          a.source.value,
             "incident_lat":    a.incident_lat,
             "incident_lng":    a.incident_lng,
             "location_source": a.location_source.value,

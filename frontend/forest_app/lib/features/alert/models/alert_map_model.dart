@@ -66,6 +66,19 @@ enum LocationSource {
           orElse: () => LocationSource.forest_only);
 }
 
+/// Qui a émis le signalement — distinct d'agentId, qui reste l'identifiant
+/// du créateur quel que soit son rôle (voir la note sur Alert.agent_id
+/// côté backend). Par défaut 'agent' : préserve le comportement historique
+/// pour toute alerte créée avant l'ajout de ce champ.
+enum AlertSource {
+  agent,
+  citoyen;
+
+  static AlertSource fromString(String? s) =>
+      AlertSource.values.firstWhere((e) => e.name == s,
+          orElse: () => AlertSource.agent);
+}
+
 // ── Agent dans la zone ────────────────────────────────────────
 // Aligné sur la réponse backend : { nom, phone, parcelle_name }
 
@@ -93,6 +106,7 @@ class AlertMapPoint {
   final String         id;
   final AlertType      type;
   final AlertStatus    status;
+  final AlertSource    source;
   final double?        incidentLat;
   final double?        incidentLng;
   final LocationSource locationSource;
@@ -103,6 +117,7 @@ class AlertMapPoint {
     required this.id,
     required this.type,
     required this.status,
+    this.source = AlertSource.agent,
     this.incidentLat,
     this.incidentLng,
     required this.locationSource,
@@ -117,6 +132,7 @@ class AlertMapPoint {
     id:             j['id']        as String,
     type:           AlertType.fromString(j['type'] as String),
     status:         AlertStatus.fromString(j['status'] as String),
+    source:         AlertSource.fromString(j['source'] as String?),
     incidentLat:    (j['incident_lat'] as num?)?.toDouble(),
     incidentLng:    (j['incident_lng'] as num?)?.toDouble(),
     locationSource: LocationSource.fromString(
@@ -135,6 +151,7 @@ class AlertDetail {
   final String         forestId;
   final AlertType      type;
   final AlertStatus    status;
+  final AlertSource    source;
   final String?        description;
 
   // Localisation
@@ -168,6 +185,7 @@ class AlertDetail {
     required this.forestId,
     required this.type,
     required this.status,
+    this.source = AlertSource.agent,
     this.description,
     this.incidentLat,
     this.incidentLng,
@@ -202,6 +220,7 @@ class AlertDetail {
     forestId:         j['forest_id'] as String,
     type:             AlertType.fromString(j['type']   as String),
     status:           AlertStatus.fromString(j['status'] as String),
+    source:           AlertSource.fromString(j['source'] as String?),
     description:      j['description'] as String?,
     incidentLat:      (j['incident_lat'] as num?)?.toDouble(),
     incidentLng:      (j['incident_lng'] as num?)?.toDouble(),

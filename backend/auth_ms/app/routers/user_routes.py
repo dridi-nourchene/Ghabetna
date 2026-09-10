@@ -99,5 +99,6 @@ async def delete_user(
     user_id:      UUID,
     db:           AsyncSession = Depends(get_db),
     current_user: User         = Depends(require_admin),
+    redis:        aioredis.Redis = Depends(get_redis),
 ):
-    return await user_service.delete_user(user_id, current_user, db)
+    return await user_service.delete_user(user_id, current_user, db, redis)

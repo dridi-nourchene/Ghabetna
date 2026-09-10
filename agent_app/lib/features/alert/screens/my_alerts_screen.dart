@@ -23,7 +23,7 @@ class _MyAlertsScreenState extends ConsumerState<MyAlertsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final l10n  = AppLocalizations.of(context)!;
+    final l10n  = AppLocalizations.of(context);
     final state = ref.watch(myAlertsProvider);
 
     return state.isLoading
@@ -224,8 +224,13 @@ class _AlertCard extends StatelessWidget {
                       style: const TextStyle(
                           fontSize: 11, color: AgentColors.textMuted),
                     ),
-                    const SizedBox(width: 12),
-                    _LocationBadge(source: alert.locationSource),
+                    // Pas de badge pour forest_only : le nom de la forêt
+                    // est déjà affiché plus haut, et "Approx." suggérait à
+                    // tort une position calculée qui n'existe pas.
+                    if (alert.locationSource != LocationSource.forest_only) ...[
+                      const SizedBox(width: 12),
+                      _LocationBadge(source: alert.locationSource),
+                    ],
                   ]),
                 ],
               ),

@@ -3,7 +3,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:forest_app/features/assignment/models/assignment_model.dart';
 import 'package:forest_app/features/assignment/services/assignment_service.dart';
-import 'package:forest_app/features/forest/models/forest_model.dart';
 
 // ── State Agent ───────────────────────────────────────────────
 

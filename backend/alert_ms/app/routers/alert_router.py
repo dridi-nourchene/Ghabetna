@@ -5,7 +5,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import json
 
 from app.db.database import get_db
-from app.core.dependencies import get_current_user_id, require_supervisor
+from app.core.dependencies import (
+    get_current_user_id,
+    get_current_user_role,
+    require_supervisor,
+)
 from app.models.alert import AlertType, AlertStatus
 from app.schemas.alert import AlertDetailResponse, AlertStatusUpdate
 from app.services import alert_service
@@ -27,14 +31,23 @@ async def create_alert(
     image:        Optional[UploadFile] = File(None),
     db:           AsyncSession   = Depends(get_db),
     agent_id:     UUID           = Depends(get_current_user_id),
+    user_role:    str            = Depends(get_current_user_role),
 ):
     from app.schemas.alert import AlertCreate
+    from app.models.alert import AlertSource
+
     data = AlertCreate(
         type=type, description=description, forest_id=forest_id,
         incident_lat=incident_lat, incident_lng=incident_lng,
         agent_lat=agent_lat, agent_lng=agent_lng,
     )
-    return await alert_service.create_alert(db=db, data=data, agent_id=agent_id, image=image)
+    # Seul 'citoyen' distingue la provenance : tout le reste (agent,
+    # supervisor, admin…) reste rangé sous 'agent' par défaut, ce qui
+    # correspond au comportement historique avant l'ajout de ce champ.
+    source = AlertSource.citoyen if user_role == "citoyen" else AlertSource.agent
+    return await alert_service.create_alert(
+        db=db, data=data, agent_id=agent_id, source=source, image=image
+    )
 
 
 # ── MINE (agent) ──────────────────────────────────────────────

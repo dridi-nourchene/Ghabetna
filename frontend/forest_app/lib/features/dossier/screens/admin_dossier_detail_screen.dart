@@ -264,7 +264,7 @@ class _AdminDossierDetailScreenState
           _Champ('Téléphone', etat.citoyen?.phone ?? d.telephone ?? '—'),
           // Interpolation plutôt qu'un cast : le champ compile que
           // AppUser.birthDate soit un String ou un DateTime.
-          _Champ('Date de naissance', '${etat.citoyen?.birthDate ?? '—'}'),
+          _Champ('Date de naissance', etat.citoyen?.birthDate ?? '—'),
         ],
       );
 
@@ -541,7 +541,7 @@ class _Section extends StatelessWidget {
               // latérale s'ouvre, au lieu de déborder.
               if (champs.isNotEmpty)
                 Wrap(spacing: 28, runSpacing: 16, children: champs),
-              if (apres != null) apres!,
+              ?apres,
             ],
           ),
         ),

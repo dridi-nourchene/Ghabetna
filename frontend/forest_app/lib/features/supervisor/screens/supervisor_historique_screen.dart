@@ -22,6 +22,8 @@ class SupervisorHistoriqueScreen extends ConsumerStatefulWidget {
 class _State extends ConsumerState<SupervisorHistoriqueScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabs;
+  final _rechercheCtrl = TextEditingController();
+  String _recherche = '';
 
   @override
   void initState() {
@@ -36,7 +38,24 @@ class _State extends ConsumerState<SupervisorHistoriqueScreen>
   @override
   void dispose() {
     _tabs.dispose();
+    _rechercheCtrl.dispose();
     super.dispose();
+  }
+
+  /// Filtre côté client, appliqué par-dessus la liste déjà chargée pour
+  /// l'onglet courant — le statut reste filtré côté serveur (onglets), la
+  /// recherche affine seulement ce qui est déjà affiché. Un seul champ
+  /// cherche à la fois dans le type, la forêt et l'agent : plus simple
+  /// pour le superviseur que trois filtres séparés.
+  List<AlertDetail> _filtrer(List<AlertDetail> alertes) {
+    final q = _recherche.trim().toLowerCase();
+    if (q.isEmpty) return alertes;
+    return alertes.where((a) {
+      final type = a.type.label.toLowerCase();
+      final foret = (a.forestName ?? '').toLowerCase();
+      final agent = (a.agentNom ?? '').toLowerCase();
+      return type.contains(q) || foret.contains(q) || agent.contains(q);
+    }).toList();
   }
 
   void _onTabChanged(int idx) {
@@ -136,22 +155,66 @@ class _State extends ConsumerState<SupervisorHistoriqueScreen>
           ),
         ),
       ),
-      body: state.isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: AppColors.primaryMid))
-          : state.error != null
-              ? _ErrorState(
-                  message: state.error!,
-                  onRetry: () {
-                    if (!mounted) return; // ← GUARD
-                    ref.read(historiqueProvider.notifier).load();
-                  },
-                )
-              : state.alerts.isEmpty
-                  ? const _EmptyState()
-                  : _AlertList(alerts: state.alerts),
+      body: Column(
+        children: [
+          _barreRecherche(),
+          Expanded(
+            child: state.isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(color: AppColors.primaryMid))
+                : state.error != null
+                    ? _ErrorState(
+                        message: state.error!,
+                        onRetry: () {
+                          if (!mounted) return; // ← GUARD
+                          ref.read(historiqueProvider.notifier).load();
+                        },
+                      )
+                    : Builder(builder: (_) {
+                        final filtres = _filtrer(state.alerts);
+                        if (filtres.isEmpty) {
+                          return _recherche.trim().isEmpty
+                              ? const _EmptyState()
+                              : const _AucunResultat();
+                        }
+                        return _AlertList(alerts: filtres);
+                      }),
+          ),
+        ],
+      ),
     );
   }
+
+  Widget _barreRecherche() => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+        child: TextField(
+          controller: _rechercheCtrl,
+          onChanged: (v) => setState(() => _recherche = v),
+          style: const TextStyle(fontSize: 13.5, color: AppColors.textPrimary),
+          decoration: InputDecoration(
+            hintText: 'Rechercher par forêt, agent ou type…',
+            hintStyle: const TextStyle(fontSize: 13, color: AppColors.textMuted),
+            prefixIcon: const Icon(Icons.search, size: 19, color: AppColors.textMuted),
+            suffixIcon: _recherche.isEmpty
+                ? null
+                : IconButton(
+                    icon: const Icon(Icons.close, size: 17, color: AppColors.textMuted),
+                    onPressed: () {
+                      _rechercheCtrl.clear();
+                      setState(() => _recherche = '');
+                    },
+                  ),
+            filled: true,
+            fillColor: AppColors.bgInput,
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide.none,
+            ),
+          ),
+        ),
+      );
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -166,7 +229,7 @@ class _AlertList extends StatelessWidget {
   Widget build(BuildContext context) => ListView.separated(
         padding:     const EdgeInsets.all(16),
         itemCount:   alerts.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        separatorBuilder: (_, _) => const SizedBox(height: 10),
         itemBuilder: (context, i) => _AlertCard(alert: alerts[i]),
       );
 }
@@ -226,6 +289,14 @@ class _AlertCard extends StatelessWidget {
                             fontSize:   14,
                             fontWeight: FontWeight.w600,
                             color:      AppColors.textPrimary)),
+                    if (alert.source == AlertSource.citoyen) ...[
+                      const SizedBox(width: 6),
+                      const _InfoChip(
+                        icon:  Icons.hiking,
+                        label: 'Citoyen',
+                        color: AppColors.info,
+                      ),
+                    ],
                     const Spacer(),
                     Container(
                       padding: const EdgeInsets.symmetric(
@@ -257,19 +328,15 @@ class _AlertCard extends StatelessWidget {
                     ),
                   ],
                   const SizedBox(height: 6),
-                  Row(children: [
-                    _InfoChip(
-                      icon:  alert.locationSource == LocationSource.exif
-                          ? Icons.gps_fixed
-                          : Icons.location_searching,
-                      label: alert.locationSource == LocationSource.exif
-                          ? 'GPS précis'
-                          : 'Approx.',
-                      color: alert.locationSource == LocationSource.exif
-                          ? AppColors.success
-                          : AppColors.warning,
-                    ),
-                    const SizedBox(width: 6),
+                  Wrap(spacing: 6, runSpacing: 6, children: [
+                    _LocationChip(alert: alert),
+                    if (alert.agentLat != null && alert.agentLng != null)
+                      _InfoChip(
+                        icon: Icons.person_pin_circle_outlined,
+                        label: 'Agent : ${alert.agentLat!.toStringAsFixed(4)}, '
+                            '${alert.agentLng!.toStringAsFixed(4)}',
+                        color: AppColors.primaryMid,
+                      ),
                     if (alert.imageUrl != null)
                       const _InfoChip(
                         icon:  Icons.image_outlined,
@@ -277,14 +344,12 @@ class _AlertCard extends StatelessWidget {
                         color: AppColors.info,
                       ),
                     if (alert.supervisorComment != null &&
-                        alert.supervisorComment!.isNotEmpty) ...[
-                      const SizedBox(width: 6),
+                        alert.supervisorComment!.isNotEmpty)
                       const _InfoChip(
                         icon:  Icons.comment_outlined,
                         label: 'Commenté',
                         color: AppColors.primaryMid,
                       ),
-                    ],
                   ]),
                 ],
               ),
@@ -299,6 +364,28 @@ class _AlertCard extends StatelessWidget {
   String _formatDate(DateTime dt) =>
       '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}  '
       '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+}
+
+/// Précision de la localisation. Pour `forest_only` (ni EXIF ni GPS
+/// téléphone n'ont abouti), on affiche le nom de la forêt choisie par le
+/// signalant — jamais le mot "approximatif", qui suggérerait à tort une
+/// position calculée alors qu'il n'y en a aucune.
+class _LocationChip extends StatelessWidget {
+  const _LocationChip({required this.alert});
+  final AlertDetail alert;
+
+  @override
+  Widget build(BuildContext context) => switch (alert.locationSource) {
+        LocationSource.exif => const _InfoChip(
+            icon: Icons.gps_fixed, label: 'GPS précis', color: AppColors.success),
+        LocationSource.agent_gps => const _InfoChip(
+            icon: Icons.location_on, label: 'GPS tél.', color: AppColors.info),
+        LocationSource.forest_only => _InfoChip(
+            icon:  Icons.park_outlined,
+            label: alert.forestName ?? 'Forêt non précisée',
+            color: AppColors.textMuted,
+          ),
+      };
 }
 
 class _InfoChip extends StatelessWidget {
@@ -377,6 +464,26 @@ class _EmptyState extends StatelessWidget {
           Text('Les alertes de vos forêts apparaîtront ici.',
               style: TextStyle(
                   fontSize: 12, color: AppColors.textMuted)),
+        ]),
+      );
+}
+
+class _AucunResultat extends StatelessWidget {
+  const _AucunResultat();
+
+  @override
+  Widget build(BuildContext context) => const Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.search_off, size: 48, color: AppColors.textMuted),
+          SizedBox(height: 12),
+          Text('Aucun résultat',
+              style: TextStyle(
+                  fontSize:   14,
+                  fontWeight: FontWeight.w600,
+                  color:      AppColors.textSecondary)),
+          SizedBox(height: 4),
+          Text('Aucune alerte ne correspond à cette recherche.',
+              style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
         ]),
       );
 }

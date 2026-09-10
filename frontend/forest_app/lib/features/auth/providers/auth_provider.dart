@@ -2,7 +2,6 @@
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:forest_app/features/auth/services/auth_service.dart';
-import 'package:forest_app/core/token_storage.dart';
 
 enum AuthStatus { initial, loading, authenticated, unauthenticated, error }
 

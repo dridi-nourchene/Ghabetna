@@ -290,6 +290,12 @@ abstract class AppLocalizations {
   /// **'Photo'**
   String get createAlertPhoto;
 
+  /// No description provided for @createAlertGpsNotFound.
+  ///
+  /// In fr, this message translates to:
+  /// **'Aucune position trouvée dans la photo — la position du téléphone sera utilisée à la place si elle est disponible'**
+  String get createAlertGpsNotFound;
+
   /// No description provided for @createAlertAddPhoto.
   ///
   /// In fr, this message translates to:

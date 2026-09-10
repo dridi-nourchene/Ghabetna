@@ -7,8 +7,13 @@ import 'package:latlong2/latlong.dart';
 const forestTunisiaCenter = LatLng(33.8869, 9.5375);
 const forestInitialZoom   = 7.0;
 
-const forestTileUrl =
-    'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+// CartoDB (basemaps.cartocdn.com, style "voyager") exige désormais une clé
+// API sur son offre gratuite — les tuiles reviennent filigranées
+// "API KEY REQUIRED" depuis leur changement de politique. On repasse sur
+// OpenStreetMap, qui reste utilisable sans clé (userAgentPackageName suffit
+// à respecter leur politique d'usage).
+const forestTileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+const forestTileSubdomains = ['a', 'b', 'c'];
 
 // ── Couleurs polygones forêt ───────────────────────────────────
 const forestFill    = Color(0x3322C55E);

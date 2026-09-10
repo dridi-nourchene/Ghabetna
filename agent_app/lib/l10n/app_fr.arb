@@ -38,6 +38,7 @@
   "createAlertForest": "Forêt concernée *",
   "createAlertForestHint": "Choisir une forêt...",
   "createAlertPhoto": "Photo",
+  "createAlertGpsNotFound": "Aucune position trouvée dans la photo — la position du téléphone sera utilisée à la place si elle est disponible",
   "createAlertAddPhoto": "Ajouter une photo",
   "createAlertCameraOrGallery": "Caméra ou galerie",
   "createAlertDescription": "Description",

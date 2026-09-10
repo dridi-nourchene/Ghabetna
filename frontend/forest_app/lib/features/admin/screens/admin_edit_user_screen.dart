@@ -312,10 +312,12 @@ class _AdminEditUserScreenState
                           LengthLimitingTextInputFormatter(8),
                         ],
                         validator: (v) {
-                          if (v == null || v.isEmpty)
+                          if (v == null || v.isEmpty) {
                             return 'Champ requis';
-                          if (v.length != 8)
+                          }
+                          if (v.length != 8) {
                             return 'Exactement 8 chiffres';
+                          }
                           return null;
                         },
                       ),
@@ -365,10 +367,12 @@ class _AdminEditUserScreenState
                         icon:       Icons.email_outlined,
                         keyboard:   TextInputType.emailAddress,
                         validator: (v) {
-                          if (v == null || v.trim().isEmpty)
+                          if (v == null || v.trim().isEmpty) {
                             return 'Champ requis';
-                          if (!v.contains('@'))
+                          }
+                          if (!v.contains('@')) {
                             return 'Email invalide';
+                          }
                           return null;
                         },
                       ),

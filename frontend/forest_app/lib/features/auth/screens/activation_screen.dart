@@ -288,8 +288,9 @@ class _FormView extends StatelessWidget {
               if (!RegExp(r'[A-Z]').hasMatch(v)) return 'Au moins une majuscule';
               if (!RegExp(r'[a-z]').hasMatch(v)) return 'Au moins une minuscule';
               if (!RegExp(r'[0-9]').hasMatch(v)) return 'Au moins un chiffre';
-              if (!RegExp(r'[!@#\$%^&*(),.?":{}|<>_\-]').hasMatch(v))
+              if (!RegExp(r'[!@#\$%^&*(),.?":{}|<>_\-]').hasMatch(v)) {
                 return 'Au moins un caractère spécial (!@#\$...)';
+              }
               return null;
             },
           ),
@@ -303,8 +304,9 @@ class _FormView extends StatelessWidget {
             onToggle:   onToggleConfirm,
             validator: (v) {
               if (v == null || v.isEmpty) return 'Champ requis';
-              if (v != passCtrl.text)
+              if (v != passCtrl.text) {
                 return 'Les mots de passe ne correspondent pas';
+              }
               return null;
             },
           ),

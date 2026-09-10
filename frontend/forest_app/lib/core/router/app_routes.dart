@@ -69,7 +69,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(
         path:    '/login',
-        builder: (_, __) => const LoginScreen(),
+        builder: (_, _) => const LoginScreen(),
       ),
       GoRoute(
         path:    '/activate',
@@ -82,19 +82,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       //  ADMIN shell
       // ══════════════════════════════════════════════════════
       ShellRoute(
-        builder: (_, __, child) => AdminShell(child: child),
+        builder: (_, _, child) => AdminShell(child: child),
         routes: [
           GoRoute(
             path:    '/admin/dashboard',
-            builder: (_, __) => const AdminDashboard(),
+            builder: (_, _) => const AdminDashboard(),
           ),
           GoRoute(
             path:    '/admin/users',
-            builder: (_, __) => const AdminUsersScreen(),
+            builder: (_, _) => const AdminUsersScreen(),
           ),
           GoRoute(
             path:    '/admin/users/new',
-            builder: (_, __) => const AdminCreateUserScreen(),
+            builder: (_, _) => const AdminCreateUserScreen(),
           ),
           GoRoute(
             path:    '/admin/users/:id',
@@ -104,35 +104,35 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path:    '/admin/forests',
-            builder: (_, __) => const AdminForestsScreen(),
+            builder: (_, _) => const AdminForestsScreen(),
           ),
           GoRoute(
             path:    '/admin/assign/agents',
-            builder: (_, __) => const AdminAssignAgentsScreen(),
+            builder: (_, _) => const AdminAssignAgentsScreen(),
           ),
           GoRoute(
             path:    '/admin/assign/superviseurs',
-            builder: (_, __) => const AdminAssignSuperveursScreen(),
+            builder: (_, _) => const AdminAssignSuperveursScreen(),
           ),
           GoRoute(
             path:    '/admin/alerts',
-            builder: (_, __) => const _PlaceholderScreen('Alertes'),
+            builder: (_, _) => const _PlaceholderScreen('Alertes'),
           ),
           GoRoute(
             path:    '/admin/reports',
-            builder: (_, __) => const _PlaceholderScreen('Rapports'),
+            builder: (_, _) => const _PlaceholderScreen('Rapports'),
           ),
           GoRoute(
             path:    '/admin/settings',
-            builder: (_, __) => const _PlaceholderScreen('Paramètres'),
+            builder: (_, _) => const _PlaceholderScreen('Paramètres'),
           ),
           GoRoute(
           path:    '/admin/analytics',
-          builder: (_, __) => const AdminAnalyticsScreen(),
+          builder: (_, _) => const AdminAnalyticsScreen(),
         ),
           GoRoute(
             path:    '/admin/dossiers',
-            builder: (_, __) => const AdminDossiersScreen(),
+            builder: (_, _) => const AdminDossiersScreen(),
           ),
           GoRoute(
             path:    '/admin/dossiers/:profilId',
@@ -148,24 +148,24 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       //  SUPERVISEUR shell
       // ══════════════════════════════════════════════════════
       ShellRoute(
-        builder: (_, __, child) => SupervisorShell(child: child),
+        builder: (_, _, child) => SupervisorShell(child: child),
         routes: [
           GoRoute(
             path:    '/supervisor/map',
-            builder: (_, __) => const SupervisorMapScreen(),
+            builder: (_, _) => const SupervisorMapScreen(),
           ),
           GoRoute(
             path:    '/supervisor/alerts',
-            builder: (_, __) => const SupervisorAlertHistoryScreen(),
+            builder: (_, _) => const SupervisorAlertHistoryScreen(),
           ),
           GoRoute(
             path:    '/supervisor/forests',
-            builder: (_, __) =>
+            builder: (_, _) =>
                 const _PlaceholderScreen('Forêts — vue superviseur'),
           ),
           GoRoute(
             path:    '/supervisor/settings',
-            builder: (_, __) =>
+            builder: (_, _) =>
                 const _PlaceholderScreen('Paramètres superviseur'),
           ),
         ],
@@ -185,7 +185,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       // ══════════════════════════════════════════════════════
       GoRoute(
         path:    '/agent/dashboard',
-        builder: (_, __) => const _PlaceholderScreen('Agent Dashboard'),
+        builder: (_, _) => const _PlaceholderScreen('Agent Dashboard'),
       ),
     ],
 

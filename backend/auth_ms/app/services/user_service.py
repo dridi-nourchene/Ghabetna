@@ -15,6 +15,7 @@ from app.schemas.user import UserCreate, UserUpdate
  
 # ── Nom du stream Redis ───────────────────────────────────────
 STREAM_USER_ACTIVATED = "stream:user.activated"
+STREAM_USER_DELETED   = "stream:user.deleted"
 
 
 #  ────────────────────────────────────────────────────────────
@@ -270,6 +271,7 @@ async def delete_user(
     user_id:      UUID,
     current_user: User,
     db:           AsyncSession,
+    redis:        aioredis.Redis,
 ) -> dict:
 
     if current_user.role != UserRole.admin:
@@ -284,8 +286,27 @@ async def delete_user(
             detail="L'admin ne peut pas supprimer son propre compte"
         )
 
-    user = await get_user_by_id(user_id, db)
+    user      = await get_user_by_id(user_id, db)
+    full_name = user.full_name
+    role      = user.role.value
+
     await db.delete(user)
     await db.commit()
 
-    return {"message": f"User {user.full_name} supprimé avec succès"}
+    # Publié après le commit (le compte est déjà parti, un échec Redis ne
+    # doit pas faire annuler la suppression) : forest_ms écoute ce stream
+    # pour retirer l'utilisateur de son cache local ET, s'il s'agissait
+    # d'un agent affecté ou d'un superviseur affecté, libérer sa parcelle
+    # / sa forêt. Sans ça, un compte supprimé restait indéfiniment
+    # "affecté" dans assignments_cache — visible côté superviseur alors
+    # que le compte n'existe plus.
+    try:
+        await redis.xadd(
+            STREAM_USER_DELETED,
+            {"user_id": str(user_id), "role": role},
+        )
+        print(f"[REDIS] Événement publié pour {full_name} sur {STREAM_USER_DELETED}")
+    except Exception as e:
+        print(f"[REDIS ERROR] xadd échoué pour {full_name} ({STREAM_USER_DELETED}) : {e}")
+
+    return {"message": f"User {full_name} supprimé avec succès"}

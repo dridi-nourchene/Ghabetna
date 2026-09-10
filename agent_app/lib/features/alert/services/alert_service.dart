@@ -29,12 +29,22 @@ class AlertService {
         permission = await Geolocator.requestPermission();
       }
       if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) return null;
+          permission == LocationPermission.deniedForever) {
+        return null;
+      }
 
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
         timeLimit: const Duration(seconds: 8),
       );
+
+      // (0, 0) n'est jamais une position réelle pour une forêt tunisienne
+      // (c'est un point au large du Ghana) — certains téléphones/émulateurs
+      // renvoient cette valeur "stub" au lieu de lever une exception quand
+      // aucun fix GPS n'a encore été obtenu. Sans ce garde-fou, l'alerte
+      // partait avec une localisation fausse plutôt qu'absente.
+      if (position.latitude == 0 && position.longitude == 0) return null;
+
       return (lat: position.latitude, lng: position.longitude);
     } catch (e) {
       return null;
@@ -59,6 +69,16 @@ class AlertService {
                       data['Image DateTime'];
 
       if (latTag == null || lngTag == null) return null;
+
+      // Certains téléphones (notamment Samsung) réservent toujours un bloc
+      // GPS dans le JPEG, même géotagage désactivé : les tags existent mais
+      // avec des références vides ("" au lieu de "N"/"S"/"E"/"W") et des
+      // ratios à 0/0. C'est un bloc PLACEHOLDER, pas une vraie position —
+      // on le détecte ici, avant même de calculer les degrés décimaux.
+      if ((latRef?.printable.isEmpty ?? true) ||
+          (lngRef?.printable.isEmpty ?? true)) {
+        return null;
+      }
 
       // Vérification date EXIF
       if (dateTag != null) {
@@ -89,6 +109,13 @@ class AlertService {
       double lng = toDecimal(lngTag);
       if (latRef?.printable == 'S') lat = -lat;
       if (lngRef?.printable == 'W') lng = -lng;
+
+      // Un tag GPS mal formé (ratio numérateur/dénominateur invalide,
+      // valeur "0/0" écrite par certains téléphones) donne un décimal
+      // exactement nul plutôt qu'une exception — (0,0) n'existe pas dans
+      // une forêt tunisienne, donc c'est un signal d'échec, pas une vraie
+      // position.
+      if (lat == 0 && lng == 0) return null;
 
       return (lat: lat, lng: lng);
     } catch (e) {

@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:latlong2/latlong.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../features/alert/models/alert_map_model.dart';
 import '../../../features/alert/providers/alert_map_provider.dart';
+import '../../../features/forest/constants/forest_constant.dart';
 
 class SupervisorAlertDetailScreen extends ConsumerStatefulWidget {
   final String alertId;
@@ -192,47 +195,91 @@ class _AlertContent extends StatelessWidget {
                   ],
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 5),
-                decoration: BoxDecoration(
-                  color:        _statusBg,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                      color: _statusColor.withOpacity(0.3),
-                      width: 0.5),
-                ),
-                child: Text(alert.status.label,
-                    style: TextStyle(
-                        fontSize:   12,
-                        fontWeight: FontWeight.w600,
-                        color:      _statusColor)),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 5),
+                    decoration: BoxDecoration(
+                      color:        _statusBg,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                          color: _statusColor.withOpacity(0.3),
+                          width: 0.5),
+                    ),
+                    child: Text(alert.status.label,
+                        style: TextStyle(
+                            fontSize:   12,
+                            fontWeight: FontWeight.w600,
+                            color:      _statusColor)),
+                  ),
+                  if (alert.source == AlertSource.citoyen) ...[
+                    const SizedBox(height: 6),
+                    const _SourceBadge(),
+                  ],
+                ],
               ),
             ]),
           ),
 
           const SizedBox(height: 12),
 
-          // ── Image ────────────────────────────────────
-          if (alert.imageUrl != null) ...[
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.network(
-                alert.imageUrl!,
-                width:  double.infinity,
-                height: 220,
-                fit:    BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
-                  height: 80,
-                  decoration: BoxDecoration(
-                    color:        AppColors.bgInput,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Center(
-                    child: Icon(Icons.broken_image_outlined,
-                        color: AppColors.textMuted, size: 32),
-                  ),
-                ),
+          // ── Émetteur ───────────────────────────────────
+          // Juste sous le statut : c'est l'information la plus utile pour
+          // agir (qui contacter), avant même la photo ou la description.
+          // Séparée de "Agents dans la zone" — l'exclusion par agent_id
+          // côté backend garantit qu'il n'apparaît pas deux fois.
+          if (alert.agentNom != null && alert.agentNom!.isNotEmpty) ...[
+            _SectionCard(
+              child: Row(children: [
+                const Icon(Icons.person_outline,
+                    size: 16, color: AppColors.primaryMid),
+                const SizedBox(width: 8),
+                Text(alert.agentNom!,
+                    style: const TextStyle(
+                        fontSize:   14,
+                        fontWeight: FontWeight.w600,
+                        color:      AppColors.textPrimary)),
+                if (alert.agentPhone != null &&
+                    alert.agentPhone!.isNotEmpty) ...[
+                  const Spacer(),
+                  const Icon(Icons.phone_outlined,
+                      size: 13, color: AppColors.textSecondary),
+                  const SizedBox(width: 5),
+                  Text(alert.agentPhone!,
+                      style: const TextStyle(
+                          fontSize: 13, color: AppColors.textSecondary)),
+                ],
+              ]),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // ── Image + mini-carte ────────────────────────
+          // Côte à côte quand les deux existent : la photo tapable en plein
+          // écran (le cadre 160px ne montre qu'un recadrage BoxFit.cover),
+          // la carte seulement si une position exacte existe — pas de
+          // marqueur à poser pour une alerte "forest_only", ce serait
+          // mentir sur sa précision.
+          if (alert.imageUrl != null || alert.incidentLat != null) ...[
+            SizedBox(
+              height: 160,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (alert.imageUrl != null)
+                    Expanded(child: _PhotoTile(url: alert.imageUrl!)),
+                  if (alert.imageUrl != null && alert.incidentLat != null)
+                    const SizedBox(width: 10),
+                  if (alert.incidentLat != null)
+                    Expanded(
+                      child: _MiniMapTile(
+                        lat: alert.incidentLat!,
+                        lng: alert.incidentLng!,
+                      ),
+                    ),
+                ],
               ),
             ),
             const SizedBox(height: 12),
@@ -252,36 +299,6 @@ class _AlertContent extends StatelessWidget {
                           fontSize: 14,
                           color:    AppColors.textSecondary,
                           height:   1.5)),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-          ],
-
-          // ── Agent émetteur ────────────────────────────
-          if (alert.agentNom != null &&
-              alert.agentNom!.isNotEmpty) ...[
-            _SectionCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const _Label('Agent émetteur'),
-                  const SizedBox(height: 10),
-                  _InfoRow(
-                    icon:  Icons.person_outline,
-                    color: AppColors.primaryMid,
-                    label: alert.agentNom!,
-                    bold:  true,
-                  ),
-                  if (alert.agentPhone != null &&
-                      alert.agentPhone!.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    _InfoRow(
-                      icon:  Icons.phone_outlined,
-                      color: AppColors.textSecondary,
-                      label: alert.agentPhone!,
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -327,9 +344,11 @@ class _AlertContent extends StatelessWidget {
                   label: switch (alert.locationSource) {
                     LocationSource.exif      => 'GPS photo (précis)',
                     LocationSource.agent_gps => 'GPS téléphone',
-                    LocationSource.forest_only => alert.forestName != null
-                        ? 'Position approximative — ${alert.forestName}'
-                        : 'Position approximative',
+                    // Ni EXIF ni GPS téléphone n'ont abouti : on affiche la
+                    // forêt choisie par le signalant, jamais le mot
+                    // "approximatif" qui suggère à tort une position calculée.
+                    LocationSource.forest_only =>
+                        alert.forestName ?? 'Forêt non précisée',
                   },
                 ),
 
@@ -604,6 +623,150 @@ class _AlertContent extends StatelessWidget {
 // ══════════════════════════════════════════════════════════════
 //  WIDGETS RÉUTILISABLES
 // ══════════════════════════════════════════════════════════════
+
+/// Signale qu'une alerte vient d'un citoyen et non d'un agent — le seul
+/// indice visible pour le superviseur une fois que la section « Agent
+/// émetteur » (absente pour un citoyen, faute d'entrée dans le cache des
+/// affectations) ne peut plus jouer ce rôle.
+class _SourceBadge extends StatelessWidget {
+  const _SourceBadge();
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color:        AppColors.infoBg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+              color: AppColors.info.withOpacity(0.3), width: 0.5),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.hiking, size: 11, color: AppColors.info),
+          const SizedBox(width: 4),
+          const Text('Citoyen',
+              style: TextStyle(
+                  fontSize:   11,
+                  fontWeight: FontWeight.w600,
+                  color:      AppColors.info)),
+        ]),
+      );
+}
+
+/// Vignette photo — tapable, ouvre la version plein écran. `BoxFit.cover`
+/// sur 160px de haut recadre forcément l'image ; c'est voulu pour la
+/// vignette (elle doit rester compacte à côté de la carte), le plein écran
+/// compense en montrant l'image entière.
+class _PhotoTile extends StatelessWidget {
+  const _PhotoTile({required this.url});
+  final String url;
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => _PhotoViewerScreen(url: url),
+            fullscreenDialog: true,
+          ),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Image.network(
+            url,
+            width: double.infinity,
+            height: double.infinity,
+            fit: BoxFit.cover,
+            errorBuilder: (_, _, _) => Container(
+              decoration: BoxDecoration(
+                color: AppColors.bgInput,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Center(
+                child: Icon(Icons.broken_image_outlined,
+                    color: AppColors.textMuted, size: 32),
+              ),
+            ),
+          ),
+        ),
+      );
+}
+
+/// Version plein écran de la photo — zoom/déplacement libre, fond noir,
+/// bouton de fermeture explicite.
+class _PhotoViewerScreen extends StatelessWidget {
+  const _PhotoViewerScreen({required this.url});
+  final String url;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          backgroundColor: Colors.black,
+          iconTheme: const IconThemeData(color: Colors.white),
+          elevation: 0,
+        ),
+        body: Center(
+          child: InteractiveViewer(
+            minScale: 0.5,
+            maxScale: 4,
+            child: Image.network(
+              url,
+              fit: BoxFit.contain,
+              errorBuilder: (_, _, _) => const Icon(
+                Icons.broken_image_outlined,
+                color: Colors.white54,
+                size: 48,
+              ),
+            ),
+          ),
+        ),
+      );
+}
+
+/// Mini-carte — un seul marqueur, celui de CETTE alerte. Pas de contrôles de
+/// zoom ni de couches supplémentaires : elle ne sert qu'à situer le point
+/// d'un coup d'œil, pas à naviguer (pour ça il y a l'écran carte complet).
+class _MiniMapTile extends StatelessWidget {
+  const _MiniMapTile({required this.lat, required this.lng});
+  final double lat;
+  final double lng;
+
+  @override
+  Widget build(BuildContext context) {
+    final point = LatLng(lat, lng);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      // Molette pour zoomer, rien d'autre : pas de glisser-déplacer (la
+      // mini-carte reste centrée sur l'alerte), pas de double-tap ni de
+      // rotation — c'est un aperçu qu'on peut affiner, pas une carte de
+      // navigation complète.
+      child: FlutterMap(
+        options: MapOptions(
+          initialCenter: point,
+          initialZoom: 14,
+          interactionOptions: const InteractionOptions(
+            flags: InteractiveFlag.scrollWheelZoom | InteractiveFlag.pinchZoom,
+          ),
+        ),
+        children: [
+          TileLayer(
+            urlTemplate: forestTileUrl,
+            subdomains: forestTileSubdomains,
+            userAgentPackageName: 'com.ghabetna.forest_app',
+          ),
+          MarkerLayer(markers: [
+            Marker(
+              point: point,
+              width: 30,
+              height: 30,
+              child: const Icon(Icons.location_on,
+                  color: AppColors.danger, size: 30),
+            ),
+          ]),
+        ],
+      ),
+    );
+  }
+}
 
 class _SectionCard extends StatelessWidget {
   final Widget child;

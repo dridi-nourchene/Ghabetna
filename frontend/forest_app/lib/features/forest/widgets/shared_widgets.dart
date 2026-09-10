@@ -2,7 +2,6 @@
 
 import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
-import '../constants/forest_constant.dart';
 
 // ═══════════════════════════════════════════════════════════════
 //  SideTab — tab vertical sur le bord droit de la sidebar

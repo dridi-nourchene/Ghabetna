@@ -591,7 +591,7 @@ class _AdminForestsScreenState
         children: [
           TileLayer(
             urlTemplate:          forestTileUrl,
-            subdomains:           const ['a', 'b', 'c', 'd'],
+            subdomains:           forestTileSubdomains,
             userAgentPackageName: 'com.ghabetna.forest_app',
             maxZoom: 19,
           ),

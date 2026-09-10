@@ -106,6 +106,10 @@ class AppLocalizationsFr extends AppLocalizations {
   String get createAlertPhoto => 'Photo';
 
   @override
+  String get createAlertGpsNotFound =>
+      'Aucune position trouvée dans la photo — la position du téléphone sera utilisée à la place si elle est disponible';
+
+  @override
   String get createAlertAddPhoto => 'Ajouter une photo';
 
   @override

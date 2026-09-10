@@ -237,8 +237,8 @@ class AnalyticsFilters {
       );
 
   Map<String, String> toQuery() => {
-        if (forestId != null) 'forest_id': forestId!,
-        if (type     != null) 'type':      type!,
+        'forest_id': ?forestId,
+        'type':      ?type,
         if (days     != null) 'days':      days!.toString(),
       };
 }

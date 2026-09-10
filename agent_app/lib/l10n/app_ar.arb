@@ -37,6 +37,7 @@
   "createAlertForest": "الغابة المعنية *",
   "createAlertForestHint": "اختر غابة...",
   "createAlertPhoto": "الصورة",
+  "createAlertGpsNotFound": "لم يتم العثور على موقع في الصورة — سيتم استخدام موقع الهاتف بدلاً من ذلك إذا كان متاحًا",
   "createAlertAddPhoto": "إضافة صورة",
   "createAlertCameraOrGallery": "الكاميرا أو المعرض",
   "createAlertDescription": "الوصف",

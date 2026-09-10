@@ -13,7 +13,10 @@ class AlertType(str, enum.Enum):
     inondation = "inondation"
     glissement = "glissement"
     maladie    = "maladie"
-    autre      = "autre"
+    depot_dechets     = "depot_dechets"       
+    chasse_illegale   = "chasse_illegale"    
+    activite_suspecte = "activite_suspecte"    
+    autre             = "autre"
 
 
 class AlertStatus(str, enum.Enum):
@@ -26,6 +29,15 @@ class LocationSource(str, enum.Enum):
     exif        = "exif"
     agent_gps   = "agent_gps"
     forest_only = "forest_only"
+
+
+class AlertSource(str, enum.Enum):
+    """Qui a émis le signalement. Ne remplace pas agent_id (qui reste
+    l'identifiant du créateur, agent ou citoyen) : distingue seulement la
+    provenance pour l'affichage superviseur, sans toucher au nom de colonne
+    existant — voir la note sur Alert.agent_id ci-dessous."""
+    agent   = "agent"
+    citoyen = "citoyen"
 
 
 class Alert(Base):
@@ -55,8 +67,23 @@ class Alert(Base):
 
     geom        = Column(Geometry("POINT", srid=4326), nullable=True)
     image_path  = Column(String(512), nullable=True)
+
+    # NOTE : "agent_id" garde son nom d'origine bien qu'il contienne
+    # aujourd'hui aussi bien l'id d'un agent que celui d'un citoyen — c'est
+    # le créateur du signalement, quel que soit son rôle. Le renommer en
+    # "auteur_id" toucherait alert_ms, agent_app, forest_app et
+    # analytics_ms pour un bénéfice cosmétique ; la colonne "source"
+    # ci-dessous suffit à distinguer la provenance sans casser
+    # /api/alerts/mine ni les lignes déjà en base.
     agent_id    = Column(UUID(as_uuid=True), nullable=False)
     forest_id   = Column(UUID(as_uuid=True), nullable=False)
+
+    source = Column(
+        SAEnum(AlertSource),
+        nullable=False,
+        default=AlertSource.agent,
+        server_default="agent",
+    )
 
     # ── Superviseur (remplace admin) ──────────────────────
     supervisor_comment = Column(Text,                    nullable=True)

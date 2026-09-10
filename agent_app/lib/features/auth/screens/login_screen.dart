@@ -40,7 +40,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final l10n      = AppLocalizations.of(context)!;
+    final l10n      = AppLocalizations.of(context);
     final auth      = ref.watch(authProvider);
     final isLoading = auth.isLoading;
 
@@ -60,9 +60,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               children: [
 
                 // ── Toggle langue (top right) ────────────────
-                Align(
+                const Align(
                   alignment: AlignmentDirectional.centerEnd,
-                  child: const LangToggle(),
+                  child: LangToggle(),
                 ),
 
                 const SizedBox(height: 24),

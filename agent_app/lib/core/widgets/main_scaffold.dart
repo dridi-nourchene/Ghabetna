@@ -27,7 +27,7 @@ class MainScaffold extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedIndex = _selectedIndex(location);
-    final l10n          = AppLocalizations.of(context)!;
+    final l10n          = AppLocalizations.of(context);
 
     return Scaffold(
       backgroundColor: AgentColors.bgPage,
@@ -207,9 +207,9 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final activeColor   = const Color(0xFF1A4731);
-    final inactiveColor = const Color(0xFF8FA896);
-    final logoutColor   = const Color(0xFFE05C2A);
+    const activeColor   = Color(0xFF1A4731);
+    const inactiveColor = Color(0xFF8FA896);
+    const logoutColor   = Color(0xFFE05C2A);
 
     final color = isLogout
         ? logoutColor

@@ -76,7 +76,7 @@ class _StatsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final v = (int n) => isLoading ? '—' : '$n';
+    String v(int n) => isLoading ? '—' : '$n';
 
     return Row(
       children: [

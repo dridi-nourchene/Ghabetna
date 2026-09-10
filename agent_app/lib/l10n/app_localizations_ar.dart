@@ -105,6 +105,10 @@ class AppLocalizationsAr extends AppLocalizations {
   String get createAlertPhoto => 'الصورة';
 
   @override
+  String get createAlertGpsNotFound =>
+      'لم يتم العثور على موقع في الصورة — سيتم استخدام موقع الهاتف بدلاً من ذلك إذا كان متاحًا';
+
+  @override
   String get createAlertAddPhoto => 'إضافة صورة';
 
   @override

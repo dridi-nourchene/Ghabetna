@@ -49,18 +49,18 @@ class _CreateAlertScreenState extends ConsumerState<CreateAlertScreen> {
 
     final file = File(picked.path);
     final gps  = await AlertService.extractGpsFromImage(file);
-    final l10n = AppLocalizations.of(context)!;
+    final l10n = AppLocalizations.of(context);
 
     setState(() {
       _imageFile = file;
       _gpsInfo   = gps != null
           ? '✓ GPS : ${gps.lat.toStringAsFixed(5)}, ${gps.lng.toStringAsFixed(5)}'
-          : '⚠️ ${l10n.createAlertForestHint}';
+          : '⚠️ ${l10n.createAlertGpsNotFound}';
     });
   }
 
   void _showImageSourceDialog() {
-    final l10n = AppLocalizations.of(context)!;
+    final l10n = AppLocalizations.of(context);
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -102,7 +102,7 @@ class _CreateAlertScreenState extends ConsumerState<CreateAlertScreen> {
   }
 
   Future<void> _submit() async {
-    final l10n = AppLocalizations.of(context)!;
+    final l10n = AppLocalizations.of(context);
 
     if (_selectedType == null) {
       _showSnack(l10n.createAlertTypeRequired, AgentColors.warning);
@@ -131,7 +131,7 @@ class _CreateAlertScreenState extends ConsumerState<CreateAlertScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final l10n  = AppLocalizations.of(context)!;
+    final l10n  = AppLocalizations.of(context);
     final state = ref.watch(createAlertProvider);
 
     ref.listen<CreateAlertState>(createAlertProvider, (_, next) {
@@ -309,7 +309,7 @@ class _TypeDropdownFixed extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final types = AlertType.values;
+    const types = AlertType.values;
 
     return SizedBox(
       height: _h,
@@ -665,7 +665,7 @@ class _ImagePickerWidget extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.only(top: 6),
                 child: Text(changeLabel,
-                    style: TextStyle(
+                    style: const TextStyle(
                         fontSize:        12,
                         color:           AgentColors.primary,
                         decoration:      TextDecoration.underline,

@@ -1,4 +1,4 @@
-
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +9,7 @@ import 'dart:ui' as ui;
 import '../../../../core/theme/app_colors.dart';
 import '../../../features/alert/models/alert_map_model.dart';
 import '../../../features/alert/providers/alert_map_provider.dart';
+import '../../../features/forest/constants/forest_constant.dart';
 import '../../../features/forest/models/forest_model.dart';
 import '../../../features/forest/widgets/zoom_panel.dart';
 import '../providers/supervisor_forest_provider.dart';
@@ -48,17 +49,54 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
     super.dispose();
   }
 
-  LatLng? _resolvePosition(AlertMapPoint point, List<Forest> forests) {
+  /// Rayon du cercle de dispersion, en mètres. Assez grand pour que deux
+  /// triangles de 34px ne se recouvrent plus au zoom habituel de
+  /// consultation (~13-15), assez petit pour que le groupe reste lisible
+  /// comme "plusieurs alertes de cette forêt" et non comme des incidents
+  /// dispersés sur le terrain.
+  static const double _rayonDispersionM = 45.0;
+
+  /// Décale un point de [rayonM] mètres dans la direction [angleRad],
+  /// approximation suffisante à cette échelle (quelques dizaines de
+  /// mètres) : la Terre y est localement assimilable à un plan.
+  LatLng _decaler(LatLng centre, double rayonM, double angleRad) {
+    const metresParDegreLat = 111320.0;
+    final metresParDegreLng =
+        metresParDegreLat * math.cos(centre.latitude * math.pi / 180);
+    final dLat = (rayonM * math.cos(angleRad)) / metresParDegreLat;
+    final dLng = (rayonM * math.sin(angleRad)) /
+        (metresParDegreLng == 0 ? 1 : metresParDegreLng);
+    return LatLng(centre.latitude + dLat, centre.longitude + dLng);
+  }
+
+  /// Position d'affichage d'une alerte.
+  ///
+  /// [rang]/[total] situent ce point parmi les alertes SANS position exacte
+  /// de la MÊME forêt : sans ça, deux alertes approximatives d'une même
+  /// forêt s'empileraient exactement sur le centroïde, rendant la seconde
+  /// intappable. On les répartit donc en cercle autour du centroïde plutôt
+  /// que de les superposer — le centroïde de la forêt sert de point
+  /// d'ancrage, pas de position d'alerte en soi.
+  LatLng? _resolvePosition(
+    AlertMapPoint point,
+    List<Forest> forests, {
+    required int rang,
+    required int total,
+  }) {
     if (point.hasExactLocation) {
       return LatLng(point.incidentLat!, point.incidentLng!);
     }
+    Forest forest;
     try {
-      final forest = forests.firstWhere((f) => f.id == point.forestId);
-      if (forest.centroidLat != null && forest.centroidLng != null) {
-        return LatLng(forest.centroidLat!, forest.centroidLng!);
-      }
-    } catch (_) {}
-    return null;
+      forest = forests.firstWhere((f) => f.id == point.forestId);
+    } catch (_) {
+      return null;
+    }
+    if (forest.centroidLat == null || forest.centroidLng == null) return null;
+    final centre = LatLng(forest.centroidLat!, forest.centroidLng!);
+    if (total <= 1) return centre;
+    final angle = (2 * math.pi * rang) / total;
+    return _decaler(centre, _rayonDispersionM, angle);
   }
 
   @override
@@ -98,9 +136,23 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
       }
     }
 
+    // Regroupe les alertes SANS position exacte par forêt, pour connaître
+    // le rang de chacune dans son groupe avant de calculer sa dispersion.
+    final groupesApprox = <String, List<AlertMapPoint>>{};
+    for (final point in alertState.points) {
+      if (point.hasExactLocation) continue;
+      groupesApprox.putIfAbsent(point.forestId, () => []).add(point);
+    }
+
     final alertMarkers = <Marker>[];
     for (final point in alertState.points) {
-      final position = _resolvePosition(point, forests);
+      int rang = 0, total = 1;
+      if (!point.hasExactLocation) {
+        final groupe = groupesApprox[point.forestId]!;
+        rang = groupe.indexOf(point);
+        total = groupe.length;
+      }
+      final position = _resolvePosition(point, forests, rang: rang, total: total);
       if (position == null) continue;
       alertMarkers.add(Marker(
         point:  position,
@@ -130,9 +182,8 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
         ),
         children: [
           TileLayer(
-            urlTemplate:
-                'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-            subdomains:           const ['a', 'b', 'c', 'd'],
+            urlTemplate:          forestTileUrl,
+            subdomains:           forestTileSubdomains,
             userAgentPackageName: 'com.ghabetna.forest_app',
             maxZoom:              19,
           ),
@@ -465,9 +516,29 @@ class _Legend extends StatelessWidget {
               const Text('Parcelle', style: TextStyle(fontSize: 10, color: AppColors.textPrimary)),
             ]),
             const SizedBox(height: 4),
+            // Seules les alertes en_cours atteignent la carte — traitées et
+            // rejetées en sont retirées côté serveur, la légende n'a donc
+            // plus qu'un statut à distinguer.
             _LegendTriangle(color: const Color(0xFFD32F2F), label: 'Alerte en cours'),
             const SizedBox(height: 4),
-            _LegendTriangle(color: const Color(0xFF388E3C), label: 'Alerte traitée'),
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              Container(
+                width: 14, height: 14,
+                decoration: const BoxDecoration(
+                  color:  Color(0xFFFF8F00),
+                  shape:  BoxShape.circle,
+                ),
+                child: const Center(
+                  child: Text('~',
+                      style: TextStyle(
+                          fontSize: 8, color: Colors.white,
+                          fontWeight: FontWeight.w700, height: 1)),
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Text('Position approximative',
+                  style: TextStyle(fontSize: 10, color: AppColors.textPrimary)),
+            ]),
           ],
         ),
       );

@@ -25,6 +25,7 @@ def _claims(user: User) -> dict:
         "user_id": str(user.user_id),
         "role":    user.role.value,
         "email":   user.email,
+        "full_name": user.full_name, 
     }
     if user.specialite is not None:
         claims["specialite"] = user.specialite.value

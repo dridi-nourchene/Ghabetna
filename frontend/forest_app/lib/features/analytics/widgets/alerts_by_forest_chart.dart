@@ -94,7 +94,7 @@ class AlertsByForestChart extends StatelessWidget {
                         touchTooltipData: BarTouchTooltipData(
                           getTooltipColor: (_) => AppColors.primaryDark, 
                           tooltipRoundedRadius: 8,
-                          getTooltipItem: (group, _, rod, __) {
+                          getTooltipItem: (group, _, rod, _) {
                             final isRejected = rod.color == AppColors.danger;
                             return BarTooltipItem(
                               '${isRejected ? "Rejetées" : "Confirmées/en cours"}\n${rod.toY.round()}',

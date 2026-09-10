@@ -10,7 +10,12 @@ class Settings(BaseSettings):
 
     REDIS_HOST: str = "redis"
     REDIS_PORT: int = 6379
-    
+
+    # Enrichissement du nom de forêt (indépendant de AssignmentCache, qui ne
+    # connaît que les forêts ayant au moins un agent affecté — insuffisant
+    # pour garantir un nom de forêt sur CHAQUE alerte).
+    FOREST_SERVICE_URL: str = "http://forest_ms:8002"
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 

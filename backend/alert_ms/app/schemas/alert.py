@@ -42,6 +42,11 @@ class AlertDetailResponse(BaseModel):
 
     description: Optional[str] = None
 
+    # ── Provenance ─────────────────────────────────────
+    # 'agent' ou 'citoyen' — voir AlertSource. Distinct d'agent_id, qui
+    # reste l'identifiant du créateur quel que soit son rôle.
+    source: str = "agent"
+
     # ── Agent émetteur ────────────────────────────────
     agent_nom:   Optional[str] = None
     agent_phone: Optional[str] = None
@@ -101,6 +106,7 @@ class AlertMapPoint(BaseModel):
     id:              UUID
     type:            AlertType
     status:          AlertStatus
+    source:          str = "agent"
     incident_lat:    Optional[float]
     incident_lng:    Optional[float]
     location_source: LocationSource

@@ -8,7 +8,6 @@ import 'package:agent_app/features/auth/screens/login_screen.dart';
 import 'package:agent_app/features/alert/screens/create_alert_screen.dart';
 import 'package:agent_app/features/alert/screens/my_alerts_screen.dart';
 import 'package:agent_app/core/widgets/main_scaffold.dart';
-import 'package:agent_app/core/theme/app_colors.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
@@ -30,7 +29,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       ShellRoute(
         builder: (context, state, child) {
-          return MainScaffold(child: child, location: state.matchedLocation);
+          return MainScaffold(location: state.matchedLocation, child: child);
         },
         routes: [
           GoRoute(
@@ -78,7 +77,7 @@ class _HomeContent extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final l10n = AppLocalizations.of(context)!;
+    final l10n = AppLocalizations.of(context);
 
     return SafeArea(
       child: Padding(

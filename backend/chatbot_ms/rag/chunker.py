@@ -283,6 +283,11 @@ def _libelle_court(meta: dict) -> str:
         "arrete_2025": "Arrêté chasse 2025/2026",
         "code_forestier": "Code forestier",
         "loi_69_33": "Loi armes 69-33",
+        "code_forestier_camper": "Code forestier (camping)",
+        "arretes_parcs_1984": "Arrêtés parcs nationaux 1984",
+        "production_bio_apiculture": "Apiculture bio (arrêté 2005)",
+        "preparation_bio_miel": "Préparation miel bio (arrêté 2005)",
+        "guide_technique_apiculture": "Guide technique apiculture",
     }.get(sid, meta["source"][:40])
 
 
