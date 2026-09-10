@@ -1,4 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="public_user_app"
         android:name="${applicationName}"
@@ -40,6 +41,13 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- Requis depuis Android 11 (API 30) : sans cette déclaration,
+             open_filex ne « voit » aucune application de lecture PDF et
+             renvoie ResultType.noAppToOpen sur l'écran « Mes documents ». -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:mimeType="application/pdf"/>
         </intent>
     </queries>
 </manifest>
