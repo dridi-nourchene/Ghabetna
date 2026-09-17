@@ -107,6 +107,7 @@ class AlertMapPoint {
   final AlertType      type;
   final AlertStatus    status;
   final AlertSource    source;
+  final bool           isCritical;
   final double?        incidentLat;
   final double?        incidentLng;
   final LocationSource locationSource;
@@ -118,6 +119,7 @@ class AlertMapPoint {
     required this.type,
     required this.status,
     this.source = AlertSource.agent,
+    this.isCritical = false,
     this.incidentLat,
     this.incidentLng,
     required this.locationSource,
@@ -133,6 +135,7 @@ class AlertMapPoint {
     type:           AlertType.fromString(j['type'] as String),
     status:         AlertStatus.fromString(j['status'] as String),
     source:         AlertSource.fromString(j['source'] as String?),
+    isCritical:     j['is_critical'] as bool? ?? false,
     incidentLat:    (j['incident_lat'] as num?)?.toDouble(),
     incidentLng:    (j['incident_lng'] as num?)?.toDouble(),
     locationSource: LocationSource.fromString(
@@ -152,6 +155,7 @@ class AlertDetail {
   final AlertType      type;
   final AlertStatus    status;
   final AlertSource    source;
+  final bool           isCritical;
   final String?        description;
 
   // Localisation
@@ -186,6 +190,7 @@ class AlertDetail {
     required this.type,
     required this.status,
     this.source = AlertSource.agent,
+    this.isCritical = false,
     this.description,
     this.incidentLat,
     this.incidentLng,
@@ -221,6 +226,7 @@ class AlertDetail {
     type:             AlertType.fromString(j['type']   as String),
     status:           AlertStatus.fromString(j['status'] as String),
     source:           AlertSource.fromString(j['source'] as String?),
+    isCritical:       j['is_critical'] as bool? ?? false,
     description:      j['description'] as String?,
     incidentLat:      (j['incident_lat'] as num?)?.toDouble(),
     incidentLng:      (j['incident_lng'] as num?)?.toDouble(),

@@ -20,6 +20,13 @@ class AlertFact(Base):
     forest_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     agent_id  = Column(UUID(as_uuid=True), nullable=False, index=True)
 
+    # Provenance du signalement : "agent" ou "citoyen". Stockee en String et
+    # non en Enum, comme type et status : analytics_ms ne fait qu'agreger, il
+    # n'a pas a repliquer les enums d'alert_ms ni a migrer quand ils changent.
+    # Sans cette colonne, un citoyen est cherche dans users_cache — annuaire
+    # du seul personnel — et ressort "Inconnu".
+    source    = Column(String(20), nullable=False, server_default="agent")
+
     created_at = Column(DateTime(timezone=True), nullable=False)
     updated_at = Column(DateTime(timezone=True), nullable=True, onupdate=func.now())
 

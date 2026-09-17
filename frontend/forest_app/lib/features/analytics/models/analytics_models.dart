@@ -117,17 +117,25 @@ class ForestTypeMatrixRow {
 class TopAgentValidation {
   final String agentId;
   final String nom;
+
+  /// « agent » ou « citoyen ». Repli sur « agent » : les signalements
+  /// anterieurs a l'ouverture aux usagers de la foret n'ont pas ce champ.
+  final String source;
   final double rate;
 
   const TopAgentValidation({
     required this.agentId,
     required this.nom,
     required this.rate,
+    this.source = 'agent',
   });
+
+  bool get estCitoyen => source == 'citoyen';
 
   factory TopAgentValidation.fromJson(Map<String, dynamic> j) => TopAgentValidation(
         agentId: j['agent_id'] as String,
         nom:     j['nom']      as String,
+        source:  j['source'] as String? ?? 'agent',
         rate:    (j['rate'] as num).toDouble(),
       );
 }
@@ -136,6 +144,7 @@ class TopAgentValidation {
 class TopAgentRejection {
   final String  agentId;
   final String  nom;
+  final String  source;
   final double  rate;
   final String? agentPhone;
   final String? agentEmail;
@@ -148,6 +157,7 @@ class TopAgentRejection {
     required this.agentId,
     required this.nom,
     required this.rate,
+    this.source = 'agent',
     this.agentPhone,
     this.agentEmail,
     this.supervisorId,
@@ -156,9 +166,12 @@ class TopAgentRejection {
     this.supervisorEmail,
   });
 
+  bool get estCitoyen => source == 'citoyen';
+
   factory TopAgentRejection.fromJson(Map<String, dynamic> j) => TopAgentRejection(
         agentId:         j['agent_id']         as String,
         nom:             j['nom']              as String,
+        source:          j['source'] as String? ?? 'agent',
         rate:            (j['rate'] as num).toDouble(),
         agentPhone:      j['agent_phone']      as String?,
         agentEmail:      j['agent_email']      as String?,

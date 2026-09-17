@@ -214,6 +214,10 @@ class _AlertContent extends StatelessWidget {
                             fontWeight: FontWeight.w600,
                             color:      _statusColor)),
                   ),
+                  if (alert.isCritical) ...[
+                    const SizedBox(height: 6),
+                    const _CritiqueBadge(),
+                  ],
                   if (alert.source == AlertSource.citoyen) ...[
                     const SizedBox(height: 6),
                     const _SourceBadge(),
@@ -648,6 +652,31 @@ class _SourceBadge extends StatelessWidget {
                   fontSize:   11,
                   fontWeight: FontWeight.w600,
                   color:      AppColors.info)),
+        ]),
+      );
+}
+
+/// Signale une alerte marquée « Incident critique » par son émetteur.
+class _CritiqueBadge extends StatelessWidget {
+  const _CritiqueBadge();
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color:        AppColors.dangerBg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+              color: AppColors.danger.withOpacity(0.4), width: 0.8),
+        ),
+        child: const Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.warning_amber_rounded, size: 12, color: AppColors.danger),
+          SizedBox(width: 4),
+          Text('Critique',
+              style: TextStyle(
+                  fontSize:   11,
+                  fontWeight: FontWeight.w700,
+                  color:      AppColors.danger)),
         ]),
       );
 }

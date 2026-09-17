@@ -137,11 +137,37 @@ class _AlertCard extends StatelessWidget {
                     Text(alert.type.emoji,
                         style: const TextStyle(fontSize: 20)),
                     const SizedBox(width: 8),
-                    Text(_typeLabel(),
-                        style: const TextStyle(
-                            fontSize:   15,
-                            fontWeight: FontWeight.w600,
-                            color:      AgentColors.textPrimary)),
+                    // Flexible : avec la pastille « Critique », un libellé
+                    // long déborderait sur un petit écran.
+                    Flexible(
+                      child: Text(_typeLabel(),
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize:   15,
+                              fontWeight: FontWeight.w600,
+                              color:      AgentColors.textPrimary)),
+                    ),
+                    if (alert.isCritical) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color:        const Color(0xFFFDE8E8),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          const Icon(Icons.warning_amber_rounded,
+                              size: 12, color: Color(0xFFE05555)),
+                          const SizedBox(width: 3),
+                          Text(l10n.alertCriticalBadge,
+                              style: const TextStyle(
+                                  fontSize:   10,
+                                  fontWeight: FontWeight.w700,
+                                  color:      Color(0xFFE05555))),
+                        ]),
+                      ),
+                    ],
                     const Spacer(),
                     Container(
                       padding: const EdgeInsets.symmetric(

@@ -123,10 +123,14 @@ class DossierListNotifier extends StateNotifier<DossierListState> {
         .map((d) => DossierCitoyen(dossier: d, citoyen: parId[d.userId]))
         .toList();
 
-    // Le plus récent en haut : l'admin traite la file par ordre d'arrivée
-    // inverse. Les dates absentes finissent en bas plutôt que de faire
-    // planter la comparaison.
+    // Les dossiers en attente d'abord : ce sont ceux à traiter. Puis, dans
+    // chaque groupe, le plus récent en haut. Les dates absentes finissent
+    // en bas plutôt que de faire planter la comparaison.
     joints.sort((a, b) {
+      final pa = a.dossier.estEnAttente ? 0 : 1;
+      final pb = b.dossier.estEnAttente ? 0 : 1;
+      if (pa != pb) return pa.compareTo(pb);
+
       final da = a.dossier.soumisLe;
       final db = b.dossier.soumisLe;
       if (da == null && db == null) return 0;

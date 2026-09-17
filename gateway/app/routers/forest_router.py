@@ -138,6 +138,10 @@ async def get_parcelle_agents(parcelle_id: str, request: Request):
 async def list_agents(request: Request):
     return await _proxy(request, f"{FOREST_SERVICE_URL}/api/assignments/agents")
 
+@router.get("/api/assignments/me")
+async def get_my_assignment(request: Request):
+    return await _proxy(request, f"{FOREST_SERVICE_URL}/api/assignments/me")
+
 @router.get("/api/assignments/superviseurs")
 async def list_superviseurs(request: Request):
     return await _proxy(request, f"{FOREST_SERVICE_URL}/api/assignments/superviseurs")

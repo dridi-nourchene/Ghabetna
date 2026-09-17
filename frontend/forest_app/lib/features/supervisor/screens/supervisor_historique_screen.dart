@@ -250,15 +250,20 @@ class _AlertCard extends StatelessWidget {
         AlertStatus.rejeter  => AppColors.bgInput,
       };
 
+  bool get _urgente =>
+      alert.isCritical && alert.status == AlertStatus.en_cours;
+
   @override
   Widget build(BuildContext context) => GestureDetector(
         onTap: () => context.push('/supervisor/alert/${alert.id}'),
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color:        Colors.white,
+            color:        _urgente ? const Color(0xFFFFF7F7) : Colors.white,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.border, width: 0.5),
+            border: _urgente
+                ? Border.all(color: AppColors.danger.withOpacity(0.45), width: 1.2)
+                : Border.all(color: AppColors.border, width: 0.5),
             boxShadow: [
               BoxShadow(
                   color:      Colors.black.withOpacity(0.03),
@@ -284,11 +289,22 @@ class _AlertCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(children: [
-                    Text(alert.type.label,
-                        style: const TextStyle(
-                            fontSize:   14,
-                            fontWeight: FontWeight.w600,
-                            color:      AppColors.textPrimary)),
+                    Flexible(
+                      child: Text(alert.type.label,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize:   14,
+                              fontWeight: FontWeight.w600,
+                              color:      AppColors.textPrimary)),
+                    ),
+                    if (alert.isCritical) ...[
+                      const SizedBox(width: 6),
+                      const _InfoChip(
+                        icon:  Icons.warning_amber_rounded,
+                        label: 'Critique',
+                        color: AppColors.danger,
+                      ),
+                    ],
                     if (alert.source == AlertSource.citoyen) ...[
                       const SizedBox(width: 6),
                       const _InfoChip(

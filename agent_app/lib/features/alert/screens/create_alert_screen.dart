@@ -9,6 +9,7 @@ import 'package:agent_app/core/theme/app_colors.dart';
 import 'package:agent_app/features/alert/models/alert_model.dart';
 import 'package:agent_app/features/alert/providers/alert_provider.dart';
 import 'package:agent_app/features/alert/services/alert_service.dart';
+import 'package:agent_app/features/alert/widgets/critical_toggle.dart';
 
 class CreateAlertScreen extends ConsumerStatefulWidget {
   const CreateAlertScreen({super.key});
@@ -23,6 +24,7 @@ class _CreateAlertScreenState extends ConsumerState<CreateAlertScreen> {
   ForestSimple? _selectedForest;
   File?         _imageFile;
   String?       _gpsInfo;
+  bool          _isCritical = false;
 
   @override
   void initState() {
@@ -120,6 +122,7 @@ class _CreateAlertScreenState extends ConsumerState<CreateAlertScreen> {
               ? null
               : _descController.text.trim(),
           imageFile:   _imageFile,
+          isCritical:  _isCritical,
         );
 
     if (ok && mounted) {
@@ -219,6 +222,16 @@ class _CreateAlertScreenState extends ConsumerState<CreateAlertScreen> {
               ),
               contentPadding: const EdgeInsets.all(14),
             ),
+          ),
+
+          const SizedBox(height: 20),
+
+          // ── Incident critique ────────────────────────
+          CriticalToggle(
+            value:     _isCritical,
+            title:     l10n.createAlertCritical,
+            subtitle:  l10n.createAlertCriticalSub,
+            onChanged: (v) => setState(() => _isCritical = v),
           ),
 
           const SizedBox(height: 32),

@@ -1,6 +1,6 @@
 
 class ApiConstants {
-  static const baseUrl = 'http://192.168.100.251:8000';
+  static const baseUrl = 'http://192.168.1.70:8000';
 
   // ── Auth ──────────────────────────────────────────────
   static const loginUrl   = '$baseUrl/api/auth/login';
@@ -13,6 +13,9 @@ class ApiConstants {
 
   // ── Forests ───────────────────────────────────────────
   static const forestsUrl    = '$baseUrl/api/forests/';
+
+  // ── Profil ────────────────────────────────────────────
+  static const myProfileUrl  = '$baseUrl/api/assignments/me';
 
   // ─────────────────────────────────────────────────────
   static const requestTimeout = Duration(seconds: 90);

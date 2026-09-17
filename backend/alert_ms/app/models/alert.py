@@ -1,6 +1,6 @@
 import uuid
 import enum
-from sqlalchemy import Column, String, Float, DateTime, Text, Enum as SAEnum
+from sqlalchemy import Column, String, Float, DateTime, Text, Boolean, Enum as SAEnum, false
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from geoalchemy2 import Geometry
@@ -83,6 +83,17 @@ class Alert(Base):
         nullable=False,
         default=AlertSource.agent,
         server_default="agent",
+    )
+
+    # ── Criticité ─────────────────────────────────────────
+    # Cochée par l'émetteur (agent ou citoyen) quand la situation demande
+    # une intervention urgente. Défaut False : les alertes existantes
+    # restent des alertes normales.
+    is_critical = Column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=false(),
     )
 
     # ── Superviseur (remplace admin) ──────────────────────

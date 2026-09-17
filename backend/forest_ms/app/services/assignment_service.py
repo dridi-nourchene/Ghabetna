@@ -446,3 +446,76 @@ async def get_parcelle_agents(db: AsyncSession, parcelle_id: UUID) -> list[dict]
                 "assigned_at": a.assigned_at.isoformat() if a.assigned_at else None,
             })
     return agents
+
+# ────────────────────────────────────────────────────────────
+# PROFIL AGENT
+# ────────────────────────────────────────────────────────────
+
+async def get_agent_profile(db: AsyncSession, agent_id: UUID) -> dict:
+    """
+    Profil de l'agent connecté : identité, affectation et superviseur.
+
+    Tout vient de la base locale de forest_ms (users_cache, déjà alimenté
+    par le stream user.activated, et agent_parcelle) : aucun appel à
+    auth_ms et aucun champ supplémentaire dans Redis.
+
+    Un agent pas encore affecté reçoit quand même son identité, avec
+    forêt / parcelle / superviseur à null — l'app affiche alors un message
+    plutôt qu'une erreur.
+    """
+    agent_result = await db.execute(
+        select(UserCache).where(UserCache.user_id == agent_id)
+    )
+    agent = agent_result.scalar_one_or_none()
+
+    profile = {
+        "agent_id":      str(agent_id),
+        "nom":           agent.nom   if agent else None,
+        "email":         agent.email if agent else None,
+        "phone":         (agent.phone or None) if agent else None,
+        "forest_id":     None,
+        "forest_name":   None,
+        "parcelle_id":   None,
+        "parcelle_name": None,
+        "assigned_at":   None,
+        "superviseur":   None,
+    }
+
+    assignment_result = await db.execute(
+        select(AgentParcelle).where(AgentParcelle.agent_id == agent_id)
+    )
+    assignment = assignment_result.scalar_one_or_none()
+    if not assignment:
+        return profile
+
+    parcelle_result = await db.execute(
+        select(Parcelle)
+        .where(Parcelle.id == assignment.parcelle_id)
+        .options(selectinload(Parcelle.forest))
+    )
+    parcelle = parcelle_result.scalar_one_or_none()
+    if not parcelle:
+        return profile
+
+    forest = parcelle.forest
+    profile.update({
+        "forest_id":     str(parcelle.forest_id),
+        "forest_name":   forest.name if forest else None,
+        "parcelle_id":   str(parcelle.id),
+        "parcelle_name": parcelle.name,
+        "assigned_at":   assignment.assigned_at.isoformat() if assignment.assigned_at else None,
+    })
+
+    if forest and forest.superviseur_id:
+        sup_result = await db.execute(
+            select(UserCache).where(UserCache.user_id == forest.superviseur_id)
+        )
+        sup = sup_result.scalar_one_or_none()
+        if sup:
+            profile["superviseur"] = {
+                "nom":   sup.nom,
+                "email": sup.email,
+                "phone": sup.phone or None,
+            }
+
+    return profile

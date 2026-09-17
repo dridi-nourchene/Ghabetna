@@ -68,6 +68,9 @@ async def _handle_created(data: dict, session: AsyncSession) -> None:
         status     = data["status"],
         forest_id  = uuid.UUID(data["forest_id"]),
         agent_id   = uuid.UUID(data["agent_id"]),
+        # Repli sur "agent" : les evenements emis avant l'ajout du champ
+        # n'en portent pas, et un KeyError ici bloquerait tout le flux.
+        source     = data.get("source") or "agent",
         created_at = _parse_dt(data.get("created_at")) or datetime.utcnow(),
     ))
     logger.info(f"[CONSUMER] AlertFact créé : {alert_id} ({data.get('type')})")

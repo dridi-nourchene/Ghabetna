@@ -28,6 +28,7 @@ async def create_alert(
     incident_lng: Optional[float] = Form(None),
     agent_lat:    Optional[float] = Form(None),
     agent_lng:    Optional[float] = Form(None),
+    is_critical:  bool           = Form(False),
     image:        Optional[UploadFile] = File(None),
     db:           AsyncSession   = Depends(get_db),
     agent_id:     UUID           = Depends(get_current_user_id),
@@ -40,6 +41,7 @@ async def create_alert(
         type=type, description=description, forest_id=forest_id,
         incident_lat=incident_lat, incident_lng=incident_lng,
         agent_lat=agent_lat, agent_lng=agent_lng,
+        is_critical=is_critical,
     )
     # Seul 'citoyen' distingue la provenance : tout le reste (agent,
     # supervisor, admin…) reste rangé sous 'agent' par défaut, ce qui

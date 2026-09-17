@@ -338,22 +338,14 @@ class _Sidebar extends StatelessWidget {
                   expanded:        expanded,
                 ),
 
-               
+                // ── Rapports : résultats d'analytics_ms ────
                 _SidebarItem(
                   icon:            Icons.bar_chart_rounded,
                   label:           'Rapports',
-                  route:           '/admin/reports',
+                  route:           '/admin/analytics',
                   currentLocation: location,
                   expanded:        expanded,
                 ),
-              _SidebarItem(
-                icon:            Icons.insights_outlined,
-                label:           'Analytics',
-                route:           '/admin/analytics',
-                currentLocation: location,
-                expanded:        expanded,
-              ),
-              
               ]),
             ),
           ),

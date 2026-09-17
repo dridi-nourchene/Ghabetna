@@ -57,6 +57,7 @@ class CreateAlertNotifier extends StateNotifier<CreateAlertState> {
     required String    forestId,
     String?            description,
     File?              imageFile,
+    bool               isCritical = false,
   }) async {
     state = state.copyWith(isSubmitting: true, clearError: true, success: false);
 
@@ -87,6 +88,7 @@ class CreateAlertNotifier extends StateNotifier<CreateAlertState> {
         agentLat:    agentPos?.lat,
         agentLng:    agentPos?.lng,
         imageFile:   imageFile,
+        isCritical:  isCritical,
       );
 
       state = state.copyWith(isSubmitting: false, success: true);

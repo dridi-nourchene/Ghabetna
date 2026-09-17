@@ -94,8 +94,10 @@ class _ValidationRowState extends State<_ValidationRow> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(widget.agent.nom,
-                  style: const TextStyle(fontSize: 12, color: AppColors.textPrimary)),
+              _NomAvecProvenance(
+                nom: widget.agent.nom,
+                estCitoyen: widget.agent.estCitoyen,
+              ),
               Row(
                 children: [
                   Text('${widget.agent.rate.round()}%',
@@ -139,7 +141,7 @@ class _RejectionRowState extends State<_RejectionRow> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(a.nom, style: const TextStyle(fontSize: 12, color: AppColors.textPrimary)),
+                  _NomAvecProvenance(nom: a.nom, estCitoyen: a.estCitoyen),
                   Row(
                     children: [
                       Text('${a.rate.round()}%',
@@ -209,4 +211,52 @@ class _ContactLine extends StatelessWidget {
           Text(text, style: const TextStyle(fontSize: 11, color: AppColors.textPrimary)),
         ],
       );
+}
+
+/// Nom de l'auteur, suivi d'une pastille « Citoyen » quand le signalement
+/// vient d'un usager de la foret.
+///
+/// Cette distinction existe parce que les deux profils ne se resolvent pas
+/// de la meme facon : le personnel est nomme via users_cache, l'annuaire
+/// tenu par forest_ms, tandis qu'un citoyen n'y figure pas — son compte vit
+/// dans auth_ms et citizen_ms. Sans la pastille, un citoyen s'affichait
+/// « Inconnu » et se confondait avec un agent reellement supprime.
+class _NomAvecProvenance extends StatelessWidget {
+  const _NomAvecProvenance({required this.nom, required this.estCitoyen});
+
+  final String nom;
+  final bool estCitoyen;
+
+  @override
+  Widget build(BuildContext context) {
+    final texte = Text(
+      nom,
+      style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
+    );
+
+    if (!estCitoyen) return texte;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        texte,
+        const SizedBox(width: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: AppColors.info.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: const Text(
+            'Citoyen',
+            style: TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w600,
+              color: AppColors.info,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }

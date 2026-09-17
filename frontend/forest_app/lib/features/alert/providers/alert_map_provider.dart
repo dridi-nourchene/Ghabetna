@@ -156,12 +156,25 @@ class HistoriqueNotifier extends StateNotifier<HistoriqueState> {
 
       if (!mounted) return; // ← Guard après await
 
-      state = state.copyWith(alerts: alerts, isLoading: false);
+      state = state.copyWith(alerts: _critiquesEnTete(alerts), isLoading: false);
     } catch (e) {
       if (!mounted) return; // ← Guard après await dans catch
 
       state = state.copyWith(isLoading: false, error: e.toString());
     }
+  }
+
+  /// Les alertes critiques encore en cours passent en tête ; le reste garde
+  /// l'ordre du serveur (plus récente d'abord). Une alerte critique déjà
+  /// traitée ou rejetée n'appelle plus d'action : elle reprend sa place
+  /// chronologique au lieu d'occuper le haut de la liste indéfiniment.
+  static List<AlertDetail> _critiquesEnTete(List<AlertDetail> alerts) {
+    bool urgente(AlertDetail a) =>
+        a.isCritical && a.status == AlertStatus.en_cours;
+    return [
+      ...alerts.where(urgente),
+      ...alerts.where((a) => !urgente(a)),
+    ];
   }
 
   void setFilter(String? status) => load(status: status);

@@ -1,0 +1,1929 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{textcomp}
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{fancyvrb}
+\usepackage{framed}
+\usepackage{hyperref}
+
+\definecolor{shadecolor}{RGB}{245,246,248}
+\definecolor{num}{RGB}{30,90,160}
+\definecolor{alerte}{RGB}{170,40,30}
+\hypersetup{colorlinks=true,linkcolor=num,urlcolor=num}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5pt}
+\sloppy
+
+% Libelle "L. 115" devant chaque explication de ligne
+\newcommand{\ligne}[1]{\item[\textcolor{num}{L.\,#1}]}
+\newenvironment{explication}
+  {\begin{description}\setlength{\itemsep}{3pt}\setlength{\parskip}{2pt}}
+  {\end{description}}
+\newcommand{\attention}{\par\textcolor{alerte}{\textbf{Attention :}}\ }
+\newcommand{\fichier}[1]{\texttt{#1}}
+
+\title{Le RAG de Ghabetna\\[4pt]
+\large Enchaînement des processus et explication ligne par ligne de \texttt{rag/chunker.py}}
+\author{\texttt{backend/chatbot\_ms}}
+\date{}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+
+% ============================================================================
+\section{Vue d'ensemble : les deux processus du RAG}
+% ============================================================================
+
+Le RAG de Ghabetna n'est pas une seule chaîne de fichiers exécutés l'un après l'autre. Il est
+composé de \textbf{deux processus distincts} qui ne s'exécutent pas au même moment et ne
+passent pas par les mêmes fichiers :
+
+\begin{enumerate}
+  \item \textbf{L'indexation} (hors ligne) : exécutée une seule fois, puis à chaque
+        modification du corpus. Elle transforme les fichiers \fichier{.md} en index
+        consultables.
+  \item \textbf{La réponse à une question} (en ligne) : exécutée à chaque requête d'un
+        utilisateur. Elle lit les index déjà construits.
+\end{enumerate}
+
+Trois précisions importantes sur l'ordre des fichiers :
+
+\begin{itemize}
+  \item \fichier{store.py} n'intervient \textbf{pas} pendant l'indexation : il ne construit
+        rien, il \emph{lit} les fichiers produits par l'indexation, au moment de répondre.
+  \item \fichier{synonymes.py} et \fichier{calendrier.py} n'interviennent \textbf{pas}
+        pendant l'indexation : ils travaillent uniquement sur la question de l'utilisateur.
+  \item Le cache est \textbf{consulté en premier}, avant toute recherche, et
+        \textbf{alimenté en dernier}, après la génération.
+\end{itemize}
+
+\fichier{config.py} est utilisé par tous les fichiers : il regroupe tous les réglages
+(chemins, modèle, tailles, clés).
+
+% ----------------------------------------------------------------------------
+\subsection{Processus A : indexation des données}
+% ----------------------------------------------------------------------------
+
+Commande : \texttt{python -m scripts.build\_index}
+
+\begin{shaded}
+\begin{Verbatim}[fontsize=\footnotesize]
+scripts/build_index.py        (chef d'orchestre : lance 2 processus Python separes)
+|
++-- PROCESSUS 1 : scripts/build_embeddings.py           (lourd : charge torch)
+|     |
+|     +-- ETAPE 1 : rag/chunker.py  -> chunker_corpus()
+|     |       lit   data/corpus/<domaine>/*.md  +  _manifest.json
+|     |       ecrit data/index/chunks.json                (~320 chunks)
+|     |
+|     +-- ETAPE 2 : rag/indexer.py  -> embedder(chunks)
+|             charge le modele bge-m3, transforme chaque chunk en vecteur
+|             ecrit data/index/vecteurs.npy               (matrice 320 x 1024)
+|                   data/index/vecteurs.meta.json         (empreinte du cache)
+|
++-- PROCESSUS 2 : scripts/build_stores.py               (leger : sans torch)
+      |
+      +-- ETAPE 3 : rag/indexer.py  -> indexer_bm25(chunks)
+              ecrit data/index/bm25.pkl                   (index lexical)
+\end{Verbatim}
+\end{shaded}
+
+\textbf{Pourquoi deux processus ?} L'embedding est l'étape lente (environ 11 minutes sur
+CPU). Comme son résultat, \fichier{vecteurs.npy}, est enregistré sur disque, l'étape BM25
+peut être relancée en quelques secondes sans recharger le modèle. Séparer les processus
+évite aussi les conflits de bibliothèques natives (DLL) entre \texttt{torch} et les autres
+bibliothèques.
+
+\textbf{Résultat :} trois fichiers dans \fichier{data/index/}.
+
+\begin{longtable}{>{\ttfamily}l p{9.5cm}}
+\toprule
+\normalfont\textbf{Fichier} & \textbf{Contenu} \\
+\midrule
+chunks.json  & la liste des chunks : textes et métadonnées \\
+vecteurs.npy & un vecteur de 1024 nombres par chunk, dans le même ordre ; c'est le
+               « magasin vectoriel » lu par \fichier{store.py} \\
+bm25.pkl     & l'index lexical BM25 et la liste des identifiants dans le même ordre \\
+\bottomrule
+\end{longtable}
+
+% ----------------------------------------------------------------------------
+\subsection{Processus B : traitement d'une question utilisateur}
+% ----------------------------------------------------------------------------
+
+\textbf{Au démarrage du service} (fonction \texttt{lifespan} de \fichier{app/main.py}),
+une seule fois :
+
+\begin{shaded}
+\begin{Verbatim}[fontsize=\footnotesize]
+Retriever()  -> charge le modele bge-m3 (10 a 20 s)
+             -> NumpyStore() lit vecteurs.npy + chunks.json      (store.py)
+             -> lit bm25.pkl
+\end{Verbatim}
+\end{shaded}
+
+\textbf{Puis à chaque appel de} \texttt{POST /api/chat/} :
+
+\begin{shaded}
+\begin{Verbatim}[fontsize=\footnotesize]
+ Flutter envoie { question, historique, specialite }
+      |
+ (1) config.domaines_pour("chasseur")          -> ["chasse", "app"]
+      |
+ (2) calendrier.detecter_date(question)        -> la question contient-elle une date ?
+      |
+ (3) cache.lire()     (seulement si : pas d'historique ET pas de date)
+      |-- trouve  -> reponse immediate, FIN
+      |
+ (4) retriever.rechercher(question, domaines, question_precedente)
+      |    +-- _dense() : bge-m3 encode la question -> store.query()     (le SENS)
+      |    +-- _bm25()  : synonymes.enrichir(question) -> tokeniser -> BM25   (les MOTS)
+      |    +-- _rrf()   : fusion des deux classements -> top 8 chunks
+      |
+ (5) calendrier.analyser_question_struct(question)
+      |    espece + date ?  -> verdict calcule en Python (autorise / refuse / passee)
+      |
+ (6) generator.generer(question, chunks, historique, specialite, verdict)
+      |    prompt systeme + [VERDICT] + [EXTRAITS] + QUESTION  -> Groq (LLM)
+      |
+ (7) cache.ecrire()   (memes conditions qu'en (3))
+      |
+ (8) reponse JSON : { reponse, verdict, sources, domaines, depuis_cache, duree_ms }
+\end{Verbatim}
+\end{shaded}
+
+\textbf{Où interviennent synonymes et calendrier ?}
+\begin{itemize}
+  \item \fichier{synonymes.py} est appelé \emph{à l'intérieur} du retriever, et
+        \textbf{uniquement} du côté BM25 : on ajoute à la question les mots du vocabulaire
+        officiel (« prix » $\rightarrow$ « redevance, montant, dinars »). On ne le fait
+        pas côté dense, car ajouter des mots déplacerait le vecteur de la question vers une
+        moyenne floue.
+  \item \fichier{calendrier.py} est appelé \emph{à côté} du retriever, pas dedans. Il sert
+        deux fois : à l'étape (2) pour décider si on utilise le cache, et à l'étape (5)
+        pour calculer le verdict.
+\end{itemize}
+
+\textbf{Pourquoi le cache est-il désactivé avec un historique ou une date ?} Avec un
+historique, la même question peut appeler une réponse différente selon ce qui précède
+(« et pour le lièvre ? »). Avec une date relative, « demain » ne désigne pas le même jour
+d'un jour à l'autre. Dans ces deux cas, une réponse en cache serait fausse.
+
+\newpage
+% ============================================================================
+\section{Explication ligne par ligne de \texorpdfstring{\texttt{rag/chunker.py}}{rag/chunker.py}}
+% ============================================================================
+
+\subsection*{Rôle du fichier}
+
+\fichier{chunker.py} est la \textbf{première étape} de l'indexation. Il lit les fichiers
+Markdown de \fichier{data/corpus/<domaine>/} et les découpe en petits morceaux autonomes
+appelés \emph{chunks}, enregistrés dans \fichier{data/index/chunks.json}.
+
+Sa règle fondamentale est : \textbf{un chunk = un article de loi}. Le découpage est
+\emph{sémantique} : on cherche le motif « Article N » dans les titres, au lieu de se fier au
+niveau \texttt{\#\#} ou \texttt{\#\#\#}, qui varie d'un fichier à l'autre.
+
+\subsection*{Exemple de chunk réellement produit}
+
+Extrait de \fichier{chunks.json} (première ligne du tableau de l'article premier de l'arrêté) :
+
+\begin{shaded}
+\begin{Verbatim}[fontsize=\footnotesize]
+{
+ "id": "arrete_2025_art1_lievre_perdrix_caille_sedentai",
+ "texte_embedding": "Arrêté chasse 2025/2026, Article premier. Lièvre, perdrix, ...
+                     Lièvre, perdrix, ... Date d'ouverture : 5 octobre 2025, ...",
+ "texte_indexe":    "Arrêté du 27 août 2025 (JORT n° 107 du 29 août 2025) — Titre
+                     premier : Réglementation générale — Article premier — Lièvre, ...",
+ "texte_affiche":   "Lièvre, perdrix, ... Date d'ouverture : 5 octobre 2025,
+                     Date de fermeture : 7 décembre 2025.",
+ "metadata": { "domaine": "chasse", "source_id": "arrete_2025", "article": "1",
+               "type": "tableau", "validite": "saison_2025_2026", ... }
+}
+\end{Verbatim}
+\end{shaded}
+
+\subsection*{Comment lire la suite}
+
+Le code est reproduit \textbf{intégralement}, par blocs, avec les numéros de ligne réels
+du fichier. Sous chaque bloc, chaque ligne est expliquée (\textcolor{num}{L.\,n}). Les lignes
+vides et les commentaires sont aussi signalés, pour qu'aucune ligne ne soit sautée.
+
+\subsection{En-tête, docstring et imports (lignes 1 à 30)}
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=1,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{1} \emph{Shebang}. Sous Linux ou macOS, si on exécute le fichier directement
+(\Verb@./chunker.py@), le système lit cette ligne pour savoir quel interpréteur utiliser.
+\Verb@/usr/bin/env python3@ cherche \Verb@python3@ dans le \texttt{PATH}. Cette ligne est
+sans effet sous Windows et quand on lance le module avec \Verb@python -m@.
+\ligne{2} Déclaration d'encodage (norme PEP~263). En Python~3, l'UTF-8 est déjà l'encodage par
+défaut : la ligne est gardée par convention. Elle rappelle que le fichier contient des
+caractères accentués (é, «, »).
+\end{explication}
+
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=3,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+"""
+rag/chunker.py — ETAPE 1 : decoupage des .md en chunks
+=======================================================
+
+REGLE FONDAMENTALE :
+    Un chunk = un ARTICLE de loi.
+    Le decoupage est SEMANTIQUE (on cherche le motif "Article N" dans le
+    titre) et non SYNTAXIQUE : on ne peut pas se baser sur le niveau ## ou
+    ###, car il varie d'un fichier a l'autre. Dans l'arrete les articles
+    sont en H2 ; dans le code forestier ils sont en H2 pour le Titre I et
+    en H3 pour le Titre II.
+
+MULTI-DOMAINES :
+    Le nom du sous-dossier de data/corpus/ DEVIENT la metadonnee "domaine".
+    Ajouter l'apiculture = creer data/corpus/apiculture/ et y deposer des .md.
+    Aucune ligne de code a modifier.
+
+Ce module ne depend d'aucune librairie externe : il se teste seul.
+"""
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{3} Ouverture d'une chaîne entre triples guillemets. Placée en tout début de module,
+elle devient la \emph{docstring} du module : ce n'est pas du code exécuté mais une
+documentation, accessible par \Verb@chunker.__doc__@ ou \Verb@help(chunker)@.
+\ligne{4--5} Titre du module et soulignement décoratif.
+\ligne{6} Ligne vide de mise en forme.
+\ligne{7--13} La règle fondamentale : un chunk = un article. On repère les articles par le motif
+« Article N » et non par le niveau de titre, car dans l'arrêté les articles sont en
+\texttt{\#\#} (H2), alors que dans le code forestier ils sont en H2 pour le Titre~I et en H3
+pour le Titre~II.
+\ligne{14} Ligne vide.
+\ligne{15--18} Principe multi-domaines : le nom du sous-dossier de \fichier{data/corpus/}
+devient la métadonnée \texttt{domaine}. Ajouter un domaine consiste à créer un dossier et à y
+déposer des \fichier{.md}, sans modifier le code.
+\ligne{19} Ligne vide.
+\ligne{20} Le module n'utilise que la bibliothèque standard : on peut le tester sans
+installer \texttt{torch} ni \texttt{sentence-transformers}.
+\ligne{21} Fermeture de la docstring.
+\end{explication}
+
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=22,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+from __future__ import annotations
+
+import json
+import re
+import unicodedata
+from pathlib import Path
+
+from . import config
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{22} Ligne vide.
+\ligne{23} \Verb@from __future__ import annotations@ (PEP~563) : les annotations de type ne sont
+plus évaluées à l'exécution mais conservées sous forme de texte. Cela permet d'écrire
+\Verb@str | None@ ou \Verb@dict[int, str]@ même sur une version de Python antérieure à 3.10.
+Cet import doit être la première instruction du fichier, juste après la docstring.
+\ligne{24} Ligne vide.
+\ligne{25} \Verb@json@ : lire les \fichier{\_manifest.json} et écrire \fichier{chunks.json}.
+\ligne{26} \Verb@re@ : expressions régulières, pour reconnaître titres, articles et tableaux.
+\ligne{27} \Verb@unicodedata@ : base de données Unicode, utilisée pour retirer les accents.
+\ligne{28} \Verb@Path@ : manipulation de chemins de fichiers orientée objet (module
+\Verb@pathlib@).
+\ligne{29} Ligne vide.
+\ligne{30} \Verb@from . import config@ : \emph{import relatif}. Le point désigne le paquet
+courant, \Verb@rag@. On récupère ainsi \Verb@config.TAILLE_MAX_CHUNK@,
+\Verb@config.CORPUS_DIR@, etc. Conséquence : le fichier doit être lancé comme module
+(\Verb@python -m rag.chunker@) ; un lancement direct (\Verb@python rag/chunker.py@) lève
+\emph{attempted relative import with no known parent package}.
+\end{explication}
+
+\subsection{Les expressions régulières (lignes 31 à 54)}
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=31,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+# ============================================================================
+# EXPRESSIONS REGULIERES
+# ============================================================================
+
+RE_TITRE = re.compile(r"^(#{1,6})\s+(.+?)\s*#*$")
+\end{Verbatim}
+\end{shaded}
+
+Toutes les expressions régulières sont \emph{compilées} une seule fois, au chargement du
+module, avec \Verb@re.compile@. Elles sont ensuite réutilisées sans être réanalysées. Le
+préfixe \Verb@r"..."@ (\emph{raw string}) empêche Python d'interpréter les \Verb@\@ : ainsi
+\Verb@\s@ arrive tel quel au moteur d'expressions régulières.
+
+\begin{explication}
+\ligne{31} Ligne vide.
+\ligne{32--34} Bannière de commentaire qui délimite la section.
+\ligne{35} Ligne vide.
+\ligne{36} \Verb@RE_TITRE@ reconnaît un titre Markdown. Décomposition :
+  \begin{itemize}
+    \item \Verb@^@ : début de ligne ;
+    \item \Verb@(#{1,6})@ : \textbf{groupe 1}, de 1 à 6 dièses ; son nombre de caractères
+          donnera le niveau du titre ;
+    \item \Verb@\s+@ : au moins un espace, donc \Verb@#hashtag@ n'est pas un titre ;
+    \item \Verb@(.+?)@ : \textbf{groupe 2}, le texte du titre ; le \Verb@?@ rend le
+          quantificateur \emph{paresseux} (il prend le moins de caractères possible) ;
+    \item \Verb@\s*#*@ : espaces et dièses fermants facultatifs (syntaxe
+          \Verb@## Titre ##@) ; grâce au quantificateur paresseux, ils ne sont pas avalés
+          par le groupe 2 ;
+    \item \Verb@$@ : fin de ligne.
+  \end{itemize}
+  Exemple : \Verb@### Article 165@ donne groupe~1 = \Verb@###@ et groupe~2 =
+  \Verb@Article 165@.
+\end{explication}
+
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=37,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+# Detecte un ARTICLE quel que soit son niveau de titre.
+# Gere "Article premier", "Article 12", "Article 134 bis".
+RE_ARTICLE = re.compile(r"^Article\s+(premier|\d+\s*bis|\d+)\b", re.IGNORECASE)
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{37} Ligne vide.
+\ligne{38--39} Commentaires : la regex détecte un article quel que soit son niveau de titre.
+\ligne{40} \Verb@RE_ARTICLE@ reconnaît un titre d'article :
+  \begin{itemize}
+    \item \Verb@^Article\s+@ : le mot « Article » en début de chaîne, suivi d'espaces ;
+    \item \Verb@(premier|\d+\s*bis|\d+)@ : \textbf{groupe 1}, trois alternatives. \textbf{L'ordre
+          compte} : le moteur essaie les alternatives de gauche à droite. Si \Verb@\d+@ était
+          placé avant \Verb@\d+\s*bis@, « 134 bis » serait capturé comme « 134 ».
+          \Verb@\s*@ accepte « 134 bis » comme « 134bis » ;
+    \item \Verb@\b@ : \emph{frontière de mot}. Elle empêche une correspondance partielle
+          (« premiers ») ;
+    \item \Verb@re.IGNORECASE@ : insensible à la casse (« ARTICLE 5 », « article 5 »).
+  \end{itemize}
+  Un titre comme « Article 75 (Modifié par la loi n° 2005-13) » est reconnu, car seul le
+  début est testé.
+  \attention « Article 1er » n'est pas reconnu : entre « 1 » et « er » il n'y a pas de
+  frontière de mot, donc \Verb@\b@ échoue. Le corpus actuel écrit « Article premier ».\par
+\end{explication}
+
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=41,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+# Sous-section geographique de l'article 12 de l'arrete
+RE_GOUVERNORAT = re.compile(r"^Gouvernorat\s+(?:de\s+l'|du\s+|de\s+|d')?(.+)$", re.I)
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{41} Ligne vide.
+\ligne{42} Commentaire : l'article 12 de l'arrêté est divisé en sous-sections par gouvernorat.
+\ligne{43} \Verb@RE_GOUVERNORAT@ :
+  \begin{itemize}
+    \item \Verb@^Gouvernorat\s+@ : le mot « Gouvernorat » suivi d'espaces ;
+    \item \Verb@(?:de\s+l'|du\s+|de\s+|d')?@ : groupe \emph{non capturant} (\Verb@(?:...)@),
+          facultatif (\Verb@?@), qui absorbe l'article : « de l' », « du », « de », « d' ».
+          Ici aussi l'ordre compte : \Verb@de\s+l'@ doit passer avant \Verb@de\s+@, sinon
+          « de l'Ariana » donnerait « l'Ariana » ;
+    \item \Verb@(.+)$@ : \textbf{groupe 1}, le nom du gouvernorat jusqu'à la fin ;
+    \item \Verb@re.I@ : abréviation de \Verb@re.IGNORECASE@.
+  \end{itemize}
+  Exemples : « Gouvernorat de l'Ariana » $\rightarrow$ « Ariana » ; « Gouvernorat du Kef »
+  $\rightarrow$ « Kef » ; « Gouvernorat de Béja » $\rightarrow$ « Béja ».
+\end{explication}
+
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=44,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+# Les blocs > ajoutes dans les .md : deux types traites differemment
+RE_NOTE_FIDELITE = re.compile(r"\*\*Note de fidélité\.?\*\*|\*\*Périmètre\.?\*\*", re.I)
+RE_AVERTISSEMENT = re.compile(r"\*\*Avertissement de concordance\.?\*\*", re.I)
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{44} Ligne vide.
+\ligne{45} Commentaire : les blocs de citation \Verb@>@ ajoutés dans les \fichier{.md} sont de
+deux types, traités différemment.
+\ligne{46} \Verb@RE_NOTE_FIDELITE@ : \Verb@\*\*@ correspond à deux astérisques littéraux (le gras
+Markdown ; l'astérisque est échappé car c'est un quantificateur en regex). \Verb@\.?@ accepte
+un point facultatif ; \Verb@|@ signifie « ou ». La regex reconnaît donc
+« **Note de fidélité.** » ou « **Périmètre.** ».
+  \attention cette regex n'est \textbf{jamais utilisée} dans le fichier. Tout bloc
+  \Verb@>@ qui n'est pas un avertissement est classé « note » (ligne 168), quel que soit
+  son contenu.\par
+\ligne{47} \Verb@RE_AVERTISSEMENT@ : même construction, pour « **Avertissement de concordance.** ».
+Celle-ci est utilisée à la ligne 168.
+\end{explication}
+
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=48,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+# Coquille officielle + forme correcte :  *(sic : « chasseurs »)*
+RE_SIC = re.compile(r"\*\(sic\s*:?\s*«?\s*([^»)]*?)\s*»?\)\*")
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{48} Ligne vide.
+\ligne{49} Commentaire : format d'une coquille du texte officiel suivie de sa forme correcte.
+\ligne{50} \Verb@RE_SIC@ reconnaît \Verb@*(sic : « chasseurs »)*@ :
+  \begin{itemize}
+    \item \Verb@\*\(@ : un astérisque puis une parenthèse ouvrante, littéraux ;
+    \item \Verb@sic\s*:?\s*@ : le mot « sic », un deux-points facultatif, des espaces ;
+    \item \Verb@«?\s*@ : guillemet ouvrant facultatif ;
+    \item \Verb@([^»)]*?)@ : \textbf{groupe 1}, la forme correcte : tout caractère sauf
+          \Verb@»@ et \Verb@)@ (classe négative \Verb@[^...]@), en mode paresseux ;
+    \item \Verb@\s*»?\)\*@ : guillemet fermant facultatif, puis \Verb@)*@ littéraux.
+  \end{itemize}
+  Exemple réel du code forestier : « qui cour \Verb@*(sic : « qui court »)*@ » donne le
+  groupe~1 = « qui court ».
+\end{explication}
+
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=51,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+RE_LIGNE_TABLEAU = re.compile(r"^\s*\|")
+# Ligne de donnees d'un tableau markdown : | espece | ouverture | fermeture |
+RE_LIGNE_SEPARATRICE = re.compile(r"^\s*\|[\s:|-]+\|\s*$")
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{51} Ligne vide.
+\ligne{52} \Verb@RE_LIGNE_TABLEAU@ = \Verb@^\s*\|@ : une ligne qui commence (après d'éventuels
+espaces) par une barre verticale, donc une ligne de tableau Markdown. Le \Verb@|@ est échappé,
+car en regex il signifie « ou ».
+\ligne{53} Commentaire. \attention il est mal placé : il décrit une « ligne de données »
+(ligne 52), alors qu'il précède la regex de la ligne séparatrice.\par
+\ligne{54} \Verb@RE_LIGNE_SEPARATRICE@ = \Verb@^\s*\|[\s:|-]+\|\s*$@ : la ligne
+\Verb@|---|:---:|@ qui sépare l'entête des données. La classe \Verb@[\s:|-]@ n'accepte que des
+espaces, des deux-points, des barres et des tirets (placé en dernier dans la classe, le
+\Verb@-@ est littéral). Une ligne contenant une seule lettre ne correspond donc pas.
+\end{explication}
+
+\subsection{Utilitaires (lignes 55 à 97)}
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=55,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+
+# ============================================================================
+# UTILITAIRES
+# ============================================================================
+
+def plier_accents(txt: str) -> str:
+    """
+    Aïn -> Ain, Béjà -> Beja.
+    Sert UNIQUEMENT a fabriquer des identifiants techniques.
+    Le texte affiche garde ses accents.
+    """
+    d = unicodedata.normalize("NFD", txt)
+    return "".join(c for c in d if unicodedata.category(c) != "Mn")
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{55--56} Deux lignes vides entre sections de module (convention PEP~8).
+\ligne{57--59} Bannière « UTILITAIRES ».
+\ligne{60} Ligne vide.
+\ligne{61} Définition de \Verb@plier_accents@. \Verb@txt: str@ et \Verb@-> str@ sont des
+annotations de type : documentation pour le lecteur et l'éditeur, non vérifiées à l'exécution.
+\ligne{62--66} Docstring : la fonction transforme « Aïn » en « Ain ». Elle sert
+\emph{uniquement} à fabriquer des identifiants ; le texte affiché garde ses accents.
+\ligne{67} \Verb@unicodedata.normalize("NFD", txt)@ : forme de normalisation \emph{NFD}
+(décomposition canonique). Chaque caractère accentué est séparé en lettre de base et accent
+\emph{combinant} : « é » (U+00E9) devient « e » (U+0065) suivi de « \'{} » (U+0301).
+\ligne{68} Expression génératrice : on parcourt chaque caractère \Verb@c@ et on ne garde que ceux
+dont la catégorie Unicode n'est pas \Verb@"Mn"@ (\emph{Mark, nonspacing}, c'est-à-dire les
+accents combinants). \Verb@"".join(...)@ recolle les caractères restants.
+Résultat : « Béja » $\rightarrow$ « Beja ». Les ligatures comme « œ » ne sont pas décomposées.
+\end{explication}
+
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=69,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+
+def slug(txt: str, taille: int = 40) -> str:
+    """'Sidi Bouzid' -> 'sidi_bouzid'"""
+    t = plier_accents(txt.lower())
+    return re.sub(r"[^a-z0-9]+", "_", t).strip("_")[:taille]
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{69--70} Lignes vides.
+\ligne{71} \Verb@slug(txt, taille=40)@ : \Verb@taille@ est un paramètre avec
+\emph{valeur par défaut} ; on peut l'omettre à l'appel.
+\ligne{72} Docstring sur une ligne : exemple d'entrée et de sortie.
+\ligne{73} Passage en minuscules, puis suppression des accents.
+\ligne{74} Trois opérations enchaînées :
+  \begin{itemize}
+    \item \Verb@re.sub(r"[^a-z0-9]+", "_", t)@ remplace toute suite de caractères qui ne sont
+          ni lettres ni chiffres (classe négative, \Verb@+@ = une ou plusieurs) par un seul
+          \Verb@_@ ;
+    \item \Verb@.strip("_")@ retire les \Verb@_@ au début et à la fin ;
+    \item \Verb@[:taille]@ : \emph{slicing}, on garde au plus \Verb@taille@ caractères.
+  \end{itemize}
+  Exemple : « Gouvernorat de l'Ariana » $\rightarrow$ \Verb@gouvernorat_de_l_ariana@.
+\end{explication}
+
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=75,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+
+def numero_article(titre: str) -> str | None:
+    """
+    'Article premier' -> '1'  |  'Article 134 bis' -> '134bis'
+    None si ce n'est pas un article (Chapitre, Visas, Preambule...).
+    """
+    m = RE_ARTICLE.match(titre)
+    if not m:
+        return None
+    num = m.group(1).lower().replace(" ", "")
+    return "1" if num == "premier" else num
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{75--76} Lignes vides.
+\ligne{77} \Verb@-> str | None@ : la fonction renvoie soit une chaîne, soit \Verb@None@.
+\ligne{78--81} Docstring : « Article premier » $\rightarrow$ \Verb@"1"@, « Article 134 bis »
+$\rightarrow$ \Verb@"134bis"@, \Verb@None@ pour un titre qui n'est pas un article.
+\ligne{82} \Verb@RE_ARTICLE.match(titre)@ : \Verb@match@ ne teste que le \emph{début} de la chaîne
+(contrairement à \Verb@search@, qui cherche partout). Renvoie un objet \Verb@Match@ ou \Verb@None@.
+\ligne{83} \Verb@if not m@ : \Verb@None@ est « faux » en Python.
+\ligne{84} Pas un article (« Chapitre II », « Visas »…) : on renvoie \Verb@None@.
+\ligne{85} \Verb@m.group(1)@ est le texte capturé par le groupe 1. \Verb@.lower()@ normalise la
+casse (grâce à \Verb@IGNORECASE@, on a pu capturer « Premier » ou « BIS »).
+\Verb@.replace(" ", "")@ transforme « 134 bis » en « 134bis ».
+\ligne{86} \emph{Expression conditionnelle} (\Verb@A if condition else B@) : « premier » devient
+\Verb@"1"@, sinon on renvoie le numéro tel quel.
+\end{explication}
+
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=87,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+
+def extraire_alias_sic(texte: str) -> list[str]:
+    """
+    Recupere les formes correctes derriere les *(sic : « ... »)*.
+    L'article 176 ecrit "chausseurs" : coquille du texte OFFICIEL.
+    On garde "chausseurs" a l'affichage (fidelite juridique) mais on ajoute
+    "chasseurs" comme alias pour que BM25 puisse le retrouver.
+    """
+    return [m.group(1).strip() for m in RE_SIC.finditer(texte)
+            if m.group(1).strip() and len(m.group(1).strip()) < 60]
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{87--88} Lignes vides.
+\ligne{89} Définition : reçoit un texte, renvoie une liste de chaînes.
+\ligne{90--95} Docstring : l'article 176 écrit « chausseurs », une coquille du texte
+\emph{officiel}. On la garde à l'affichage pour rester fidèle au texte juridique, mais on
+ajoute « chasseurs » comme alias pour que BM25 retrouve l'article.
+\ligne{96--97} \emph{Compréhension de liste} :
+  \begin{itemize}
+    \item \Verb@RE_SIC.finditer(texte)@ parcourt \emph{toutes} les occurrences, une par une
+          (contrairement à \Verb@match@, qui ne teste que le début) ;
+    \item \Verb@m.group(1).strip()@ : la forme correcte, sans espaces autour ;
+    \item filtre : on garde l'alias s'il n'est pas vide et fait moins de 60 caractères, ce
+          qui écarte les captures aberrantes trop longues.
+  \end{itemize}
+  L'expression \Verb@m.group(1).strip()@ est calculée trois fois par occurrence : c'est un
+  peu redondant, mais le coût est négligeable.
+\end{explication}
+
+\subsection{\texorpdfstring{\texttt{decouper\_sections}}{decouper\_sections} : lire la structure du document (lignes 98 à 134)}
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=98,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+
+# ============================================================================
+# DECOUPAGE EN SECTIONS
+# ============================================================================
+
+def decouper_sections(texte: str) -> list[dict]:
+    """
+    Produit une liste de sections, chacune avec LA PILE DE SES PARENTS.
+
+    La pile est essentielle : "### Article 165" ne dit pas a quel Titre ni a
+    quel Chapitre il appartient. Ce sont ses parents qui le disent, et c'est
+    cette information qui constituera le prefixe contextuel.
+    """
+    sections, courante = [], None
+    parents: dict[int, str] = {}
+\end{Verbatim}
+\end{shaded}
+
+C'est la fonction clé du fichier. Elle lit le Markdown ligne par ligne et produit une
+liste de sections. Chaque section mémorise \textbf{la pile de ses titres parents}.
+
+\begin{explication}
+\ligne{98--99} Lignes vides.
+\ligne{100--102} Bannière « DECOUPAGE EN SECTIONS ».
+\ligne{103} Ligne vide.
+\ligne{104} Définition : reçoit le texte complet d'un fichier et renvoie une liste de
+dictionnaires.
+\ligne{105--111} Docstring : « \#\#\# Article 165 » ne dit pas à quel Titre ni à quel Chapitre
+il appartient. Ce sont ses parents qui le disent, et ils serviront au préfixe contextuel.
+\ligne{112} Affectation multiple (\emph{déballage de tuple}) : \Verb@sections = []@ contiendra
+le résultat ; \Verb@courante = None@ est la section en cours de remplissage (aucune au départ).
+\ligne{113} \Verb@parents@ est un dictionnaire \{niveau : titre\}, par exemple
+\Verb@{1: "Titre II", 2: "Chapitre I"}@. L'annotation \Verb@dict[int, str]@ documente les types.
+\end{explication}
+
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=114,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+    for ligne in texte.splitlines():
+        m = RE_TITRE.match(ligne)
+        if m:
+            niveau, titre = len(m.group(1)), m.group(2).strip()
+            if courante:
+                sections.append(courante)
+            # On oublie les parents de niveau >= au notre : en arrivant sur
+            # "## Chapitre II" on oublie les "###" du chapitre precedent,
+            # mais on garde le "# Titre II".
+            parents = {k: v for k, v in parents.items() if k < niveau}
+            courante = {"niveau": niveau, "titre": titre,
+                        "parents": [parents[k] for k in sorted(parents)],
+                        "lignes": []}
+            parents[niveau] = titre
+        elif courante is not None:
+            courante["lignes"].append(ligne)
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{114} Ligne vide.
+\ligne{115} \Verb@texte.splitlines()@ découpe le texte en lignes. Contrairement à
+\Verb@split("\n")@, elle gère aussi les fins de ligne Windows \Verb@\r\n@.
+\ligne{116} On teste si la ligne est un titre Markdown.
+\ligne{117} \Verb@if m:@ : un objet \Verb@Match@ est « vrai », \Verb@None@ est « faux ».
+\ligne{118} \Verb@len(m.group(1))@ compte les dièses : \Verb@###@ donne le niveau 3.
+\Verb@m.group(2).strip()@ donne le texte du titre sans espaces.
+\ligne{119--120} Un nouveau titre commence : la section précédente est terminée et on l'ajoute au
+résultat. Au tout premier titre, \Verb@courante@ vaut \Verb@None@ et rien n'est ajouté.
+\ligne{121--123} Commentaire qui explique la ligne suivante.
+\ligne{124} \emph{Compréhension de dictionnaire} : on ne garde que les parents de niveau
+\textbf{strictement inférieur} au titre courant. En arrivant sur « \#\# Chapitre II », on
+oublie les « \#\#\# » du chapitre précédent, mais on garde « \# Titre II ».
+\ligne{125--127} Création de la nouvelle section :
+  \begin{itemize}
+    \item \Verb@"niveau"@ et \Verb@"titre"@ : ceux du titre lu ;
+    \item \Verb@"parents"@ : \Verb@sorted(parents)@ trie les \emph{clés} (les niveaux), puis on
+          prend les titres dans cet ordre : du plus général au plus précis ;
+    \item \Verb@"lignes"@ : liste vide, remplie par les lignes suivantes.
+  \end{itemize}
+  La pile est calculée \emph{avant} la ligne 128 : une section n'est donc jamais son propre parent.
+\ligne{128} Le titre courant devient parent des sections qui suivront.
+\ligne{129} \Verb@elif courante is not None@ : ce n'est pas un titre et une section est ouverte.
+\ligne{130} La ligne brute (non nettoyée) est ajoutée au contenu de la section courante.
+\end{explication}
+\attention les lignes situées \textbf{avant le premier titre} du fichier ne vont nulle part :
+\Verb@courante@ vaut encore \Verb@None@, elles sont perdues sans avertissement.\par
+
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=131,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+    if courante:
+        sections.append(courante)
+    return sections
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{131} Ligne vide.
+\ligne{132--133} À la fin de la boucle, la dernière section n'a pas été ajoutée, car aucun titre
+suivant n'a déclenché la ligne 120. On l'ajoute ici.
+\ligne{134} Renvoi de la liste des sections.
+\end{explication}
+
+\textbf{Exemple d'évolution de la pile :}
+
+\begin{longtable}{l l l}
+\toprule
+\textbf{Ligne lue} & \textbf{\texttt{parents} après L.124} & \textbf{Pile enregistrée} \\
+\midrule
+\texttt{\# Titre II}          & \{\}                     & [ ] \\
+\texttt{\#\# Chapitre I}      & \{1: Titre II\}          & [Titre II] \\
+\texttt{\#\#\# Article 165}   & \{1: Titre II, 2: Chap. I\} & [Titre II, Chapitre I] \\
+\texttt{\#\#\# Article 166}   & \{1: Titre II, 2: Chap. I\} & [Titre II, Chapitre I] \\
+\texttt{\#\# Chapitre II}     & \{1: Titre II\}          & [Titre II] \\
+\bottomrule
+\end{longtable}
+
+\subsection{\texorpdfstring{\texttt{separer\_contenu}}{separer\_contenu} : trier normatif, avertissements et notes (lignes 135 à 187)}
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=135,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+
+# ============================================================================
+# SEPARATION NORMATIF / NOTES
+# ============================================================================
+
+def separer_contenu(lignes: list[str]) -> tuple[str, list[str], list[str]]:
+    """
+    Trie le contenu en trois categories :
+
+    1. normatif       -> le texte de loi lui-meme
+    2. avertissements -> blocs "> **Avertissement de concordance**"
+                         A INDEXER : ils empechent une reponse fausse
+                         (renvoi perime de la loi 69-33 vers l'article 161).
+    3. notes          -> blocs "> **Note de fidélité**", purement editoriaux,
+                         exclus de l'index.
+    """
+    normatif, avertissements, notes = [], [], []
+    bloc, type_bloc = [], None
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{135--136} Lignes vides.
+\ligne{137--139} Bannière « SEPARATION NORMATIF / NOTES ».
+\ligne{140} Ligne vide.
+\ligne{141} Définition : reçoit les lignes d'une section et renvoie un \emph{tuple} de trois
+éléments : le texte normatif (\Verb@str@), la liste des avertissements et la liste des notes.
+\ligne{142--151} Docstring qui décrit les trois catégories :
+  \begin{itemize}
+    \item \textbf{normatif} : le texte de loi lui-même ;
+    \item \textbf{avertissements} : blocs « Avertissement de concordance ». \emph{À indexer} :
+          ils empêchent une réponse fausse (le renvoi périmé de la loi 69-33 vers l'article 161) ;
+    \item \textbf{notes} : blocs « Note de fidélité », purement éditoriaux, exclus de l'index.
+  \end{itemize}
+\ligne{152} Trois listes vides.
+\ligne{153} \Verb@bloc@ accumule les lignes du bloc \Verb@>@ en cours ; \Verb@type_bloc@ vaut
+\Verb@None@ (aucun bloc), \Verb@"avertissement"@ ou \Verb@"note"@.
+\end{explication}
+
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=154,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+    def cloturer():
+        nonlocal bloc, type_bloc
+        if bloc:
+            contenu = "\n".join(bloc).strip()
+            (avertissements if type_bloc == "avertissement" else notes).append(contenu)
+        bloc, type_bloc = [], None
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{154} Ligne vide.
+\ligne{155} \Verb@cloturer@ est une \emph{fonction imbriquée} (définie dans une autre fonction).
+Elle a accès aux variables de \Verb@separer_contenu@ : c'est une \emph{fermeture} (closure).
+Elle termine le bloc \Verb@>@ en cours.
+\ligne{156} \Verb@nonlocal bloc, type_bloc@ est indispensable, car la ligne 160
+\emph{réaffecte} ces variables. Sans \Verb@nonlocal@, Python les considérerait comme locales à
+\Verb@cloturer@, et la ligne 157 lèverait \Verb@UnboundLocalError@. Les listes
+\Verb@avertissements@ et \Verb@notes@ n'en ont pas besoin : elles sont seulement modifiées
+(\Verb@.append@), pas réaffectées.
+\ligne{157} Un bloc est-il ouvert ? Une liste non vide est « vraie ».
+\ligne{158} On recolle les lignes du bloc avec des retours à la ligne, puis on retire les
+espaces aux extrémités.
+\ligne{159} L'expression conditionnelle choisit \emph{la liste de destination}, puis on appelle
+\Verb@.append@ dessus : avertissement si le type est \Verb@"avertissement"@, note sinon.
+\ligne{160} Réinitialisation : plus de bloc en cours.
+\end{explication}
+
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=161,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+    for ligne in lignes:
+        nue = ligne.strip()
+
+        if nue.startswith(">"):
+            contenu = nue.lstrip("> ").rstrip()
+            if type_bloc is None:
+                type_bloc = ("avertissement" if RE_AVERTISSEMENT.search(contenu)
+                             else "note")
+            bloc.append(contenu)
+            continue
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{161} Ligne vide.
+\ligne{162} Parcours de chaque ligne de la section.
+\ligne{163} \Verb@nue@ est la ligne sans espaces ni \Verb@\r@ aux extrémités. L'indentation
+d'origine est perdue.
+\ligne{164} Ligne vide.
+\ligne{165} Une ligne qui commence par \Verb@>@ est une citation Markdown : elle appartient à un bloc.
+\ligne{166} \Verb@nue.lstrip("> ")@ : attention, \Verb@lstrip@ reçoit un \textbf{ensemble de
+caractères}, pas un préfixe. Il retire au début tous les \Verb@>@ et espaces, dans
+n'importe quel ordre (\Verb@> > texte@ donne \Verb@texte@). \Verb@.rstrip()@ nettoie la fin.
+Une ligne composée seulement de \Verb@>@ devient une chaîne vide.
+\ligne{167} \Verb@type_bloc is None@ : c'est la \emph{première} ligne du bloc.
+\ligne{168--169} Le type du bloc est fixé une fois pour toutes par sa première ligne :
+\Verb@RE_AVERTISSEMENT.search@ cherche le motif \emph{n'importe où} dans la ligne. S'il est
+trouvé, c'est un avertissement, sinon une note.
+\ligne{170} La ligne est ajoutée au bloc.
+\ligne{171} \Verb@continue@ : on passe directement à la ligne suivante, sans exécuter la suite de la boucle.
+\end{explication}
+
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=172,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+        if bloc:
+            cloturer()
+
+        if nue == "---":
+            continue
+        if nue.startswith("**Source officielle"):
+            continue
+        if nue.startswith("*(La suite de l'article"):
+            continue
+
+        normatif.append(nue)
+
+    cloturer()
+    texte = re.sub(r"\n{3,}", "\n\n", "\n".join(normatif)).strip()
+    return texte, avertissements, notes
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{172} Ligne vide.
+\ligne{173--174} La ligne n'est pas une citation mais un bloc était ouvert : le bloc est terminé,
+on le clôture. Conséquence : une ligne vide sans \Verb@>@ entre deux paragraphes d'une citation
+coupe celle-ci en deux blocs, et le second prend le type de sa propre première ligne.
+\ligne{175} Ligne vide.
+\ligne{176--177} \Verb@---@ (ligne horizontale Markdown) : ignorée.
+\ligne{178--179} La ligne « **Source officielle** » (métadonnée éditoriale) : ignorée.
+\ligne{180--181} Marqueur « *(La suite de l'article…* » : ignoré.
+\ligne{182} Ligne vide.
+\ligne{183} Tout le reste est du texte normatif. Les lignes vides (\Verb@""@) sont aussi
+ajoutées : ce sont elles qui gardent la séparation entre paragraphes, utilisée plus tard par
+\Verb@sous_decouper@.
+\ligne{184} Ligne vide.
+\ligne{185} Dernier appel à \Verb@cloturer@ : si la section se termine par un bloc \Verb@>@,
+aucune ligne normale n'a déclenché sa clôture.
+\ligne{186} On recolle les lignes normatives, puis \Verb@re.sub(r"\n{3,}", "\n\n", ...)@ remplace
+toute suite de trois retours à la ligne ou plus par deux : au plus une ligne vide entre
+paragraphes. \Verb@.strip()@ retire les lignes vides au début et à la fin.
+\ligne{187} Renvoi du tuple (texte, avertissements, notes).
+\end{explication}
+
+\subsection{Tableaux et articles trop longs (lignes 188 à 269)}
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=188,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+
+# ============================================================================
+# SOUS-DECOUPAGE DES ARTICLES TROP LONGS
+# ============================================================================
+
+def eclater_tableau(texte: str) -> list[tuple[str, str]] | None:
+    """
+    Transforme un tableau markdown en une liste de (etiquette, phrase).
+
+    POURQUOI : le tableau de l'article premier fait 2462 caracteres et
+    melange 10 especes. Le signal "sanglier" s'y noyait parmi lievre,
+    becasse et tourterelle : un vecteur unique ne peut pas representer
+    10 regimes de dates differents.
+
+    Meme principe que l'article 12 : un tableau est une base de donnees
+    deguisee en prose, pas de la prose. On le decoupe par LIGNE.
+
+    Retourne None si le texte n'est pas un tableau exploitable.
+    """
+    lignes = [l for l in texte.splitlines() if RE_LIGNE_TABLEAU.match(l)]
+    if len(lignes) < 3:
+        return None
+\end{Verbatim}
+\end{shaded}
+
+\subsubsection*{\texttt{eclater\_tableau} : une ligne de tableau = un chunk}
+
+\begin{explication}
+\ligne{188--189} Lignes vides.
+\ligne{190--192} Bannière « SOUS-DECOUPAGE DES ARTICLES TROP LONGS ».
+\ligne{193} Ligne vide.
+\ligne{194} Définition : renvoie une liste de couples \Verb@(etiquette, phrase)@, ou \Verb@None@.
+\ligne{195--207} Docstring. Le tableau de l'article premier fait 2462 caractères et mélange 10
+espèces. Or un embedding est \textbf{un seul vecteur de taille fixe} : il ne peut pas
+représenter dix régimes de dates différents, et le signal « sanglier » s'y noie. Un tableau
+est en réalité une base de données écrite sous forme de texte : on le découpe \emph{par ligne}.
+\ligne{208} Compréhension de liste : on ne garde que les lignes qui commencent par \Verb@|@.
+\ligne{209--210} Moins de 3 lignes (il faut au minimum entête, séparateur et une ligne de
+données) : ce n'est pas un tableau exploitable.
+\end{explication}
+
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=211,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+    entetes, donnees = None, []
+    for l in lignes:
+        if RE_LIGNE_SEPARATRICE.match(l):
+            continue
+        cells = [c.strip() for c in l.strip().strip("|").split("|")]
+        if entetes is None:
+            entetes = cells
+        else:
+            donnees.append(cells)
+
+    if not entetes or not donnees:
+        return None
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{211} Ligne vide.
+\ligne{212} \Verb@entetes@ vaut \Verb@None@ tant que la ligne d'entête n'est pas lue ;
+\Verb@donnees@ recevra les lignes suivantes.
+\ligne{213} Parcours des lignes du tableau.
+\ligne{214--215} La ligne \Verb@|---|---|@ est ignorée.
+\ligne{216} Découpage d'une ligne en cellules, en trois étapes :
+\Verb@l.strip()@ retire les espaces, \Verb@.strip("|")@ retire les barres du début et de la
+fin, \Verb@.split("|")@ coupe aux barres restantes ; chaque cellule est ensuite nettoyée par
+\Verb@c.strip()@.\\
+Exemple : \newline{\footnotesize\Verb@| Sanglier | 5 octobre 2025 | 1er février 2026 |@}\newline  donne
+\newline{\footnotesize\Verb@["Sanglier", "5 octobre 2025", "1er février 2026"]@}\newline .
+\ligne{217--218} La première ligne non séparatrice est l'entête.
+\ligne{219--220} Les suivantes sont des lignes de données.
+\ligne{221} Ligne vide.
+\ligne{222--223} Sans entête ou sans données : \Verb@None@.
+\end{explication}
+
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=224,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+    sortie = []
+    for cells in donnees:
+        if len(cells) != len(entetes):
+            continue
+        # Premiere colonne = sujet de la ligne (l'espece)
+        sujet = cells[0]
+        details = ", ".join(f"{e} : {c}" for e, c in zip(entetes[1:], cells[1:]))
+        sortie.append((sujet, f"{sujet}. {details}."))
+    return sortie or None
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{224} Ligne vide.
+\ligne{225} Liste résultat.
+\ligne{226} Parcours des lignes de données.
+\ligne{227--228} Si le nombre de cellules diffère de celui de l'entête (ligne mal formée), la
+ligne est \textbf{ignorée sans message}.
+\ligne{229} Commentaire : la première colonne est le sujet de la ligne.
+\ligne{230} \Verb@sujet@ = première cellule (l'espèce).
+\ligne{231} \Verb@zip(entetes[1:], cells[1:])@ associe chaque entête (sauf la première) à la
+cellule correspondante. Pour chaque couple, on écrit \Verb@"entête : valeur"@, puis on joint
+le tout avec des virgules.\\
+Résultat : \newline{\footnotesize\Verb@Date d'ouverture : 5 octobre 2025, Date de fermeture : 1er février 2026@}\newline .
+\ligne{232} On ajoute le couple \Verb@(sujet, phrase)@ ; la phrase vaut \Verb@"sujet. détails."@.
+\attention si le sujet finit déjà par un point, on obtient deux points : « (El khedra).. Date
+d'ouverture », visible dans \fichier{chunks.json}.\par
+\ligne{233} \Verb@sortie or None@ : une liste vide est « fausse », donc on renvoie \Verb@None@
+si aucune ligne n'a été retenue.
+\end{explication}
+
+\subsubsection*{\texttt{contient\_tableau}}
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=234,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+
+def contient_tableau(texte: str) -> bool:
+    """Un tableau markdown ne doit JAMAIS etre coupe au milieu."""
+    return any(RE_LIGNE_TABLEAU.match(l) for l in texte.splitlines())
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{234--235} Lignes vides.
+\ligne{236} Définition : renvoie un booléen.
+\ligne{237} Docstring : un tableau Markdown ne doit jamais être coupé au milieu.
+\ligne{238} \Verb@any(...)@ renvoie \Verb@True@ dès qu'un élément est vrai, et s'arrête là
+(évaluation \emph{court-circuit}). Une seule ligne commençant par \Verb@|@ suffit.
+\end{explication}
+
+\subsubsection*{\texttt{sous\_decouper} : couper un article long par paragraphes}
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=239,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+
+def sous_decouper(texte: str) -> list[str]:
+    """
+    Regroupe les paragraphes en blocs de <= TAILLE_MAX_CHUNK caracteres.
+
+    Pourquoi : un embedding est un vecteur de taille FIXE. Plus le texte est
+    long, plus le sens s'y dilue. L'article 3 de l'arrete melange redevances,
+    eperviers, faucons, slougui, sanglier et etourneaux : un seul vecteur ne
+    peut pas representer tout ca.
+
+    On ne coupe jamais au milieu d'un paragraphe. Et on laisse les tableaux
+    entiers meme s'ils depassent : le tableau de l'article premier fait
+    ~2500 caracteres mais forme un bloc coherent.
+    """
+    if contient_tableau(texte) or len(texte) <= config.TAILLE_MAX_CHUNK:
+        return [texte]
+
+    paragraphes = [p.strip() for p in re.split(r"\n\s*\n", texte) if p.strip()]
+    blocs, courant = [], []
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{239--240} Lignes vides.
+\ligne{241} Définition : renvoie une liste de blocs de texte.
+\ligne{242--253} Docstring. Un embedding est un vecteur de \textbf{taille fixe} (1024 nombres) :
+plus le texte est long, plus son sens est dilué. L'article 3 de l'arrêté mélange redevances,
+éperviers, faucons, slougui, sanglier et étourneaux : un seul vecteur ne peut pas bien
+représenter tout cela. On ne coupe jamais au milieu d'un paragraphe, et on laisse les tableaux
+entiers.
+\ligne{254} Si le texte contient un tableau, ou s'il est assez court
+($\leq$ \Verb@TAILLE_MAX_CHUNK@ = 1500 caractères)…
+\ligne{255} … on le renvoie tel quel, dans une liste à un seul élément. Renvoyer toujours une
+liste simplifie le code appelant.
+\ligne{256} Ligne vide.
+\ligne{257} \Verb@re.split(r"\n\s*\n", texte)@ découpe aux lignes vides (qui peuvent contenir des
+espaces) : on obtient les paragraphes. La compréhension les nettoie et élimine les vides.
+\ligne{258} \Verb@blocs@ = résultat ; \Verb@courant@ = paragraphes du bloc en construction.
+\end{explication}
+
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=259,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+    for p in paragraphes:
+        if courant and sum(len(x) for x in courant) + len(p) > config.TAILLE_MAX_CHUNK:
+            blocs.append("\n\n".join(courant))
+            courant = [p]
+        else:
+            courant.append(p)
+
+    if courant:
+        blocs.append("\n\n".join(courant))
+    return blocs
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{259} Ligne vide.
+\ligne{260} Parcours des paragraphes.
+\ligne{261} Condition de fermeture du bloc courant :
+  \begin{itemize}
+    \item \Verb@courant@ n'est pas vide : sans cette condition, un paragraphe seul de plus de
+          1500 caractères produirait un bloc vide ; avec elle, il est accepté seul dans son bloc ;
+    \item \textbf{et} la taille du bloc plus celle du nouveau paragraphe dépasserait 1500.
+  \end{itemize}
+  La somme ne compte pas les \Verb@"\n\n"@ ajoutés au recollage : un bloc peut dépasser
+  1500 de quelques caractères. La somme est recalculée à chaque tour : c'est un coût
+  quadratique, négligeable ici.
+\ligne{262} Le bloc courant est fermé : paragraphes joints par une ligne vide.
+\ligne{263} Le nouveau paragraphe ouvre le bloc suivant.
+\ligne{264--265} Sinon, le paragraphe s'ajoute au bloc courant.
+\ligne{266} Ligne vide.
+\ligne{267--268} Le dernier bloc en construction est ajouté.
+\ligne{269} Renvoi des blocs.
+\end{explication}
+
+\subsection{Préfixes contextuels (lignes 270 à 327)}
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=270,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+
+# ============================================================================
+# PREFIXE CONTEXTUEL
+# ============================================================================
+
+def _libelle_court(meta: dict) -> str:
+    """
+    Version abregee de la source, pour le prefixe d'embedding.
+    "Arrêté du 27 août 2025 (JORT n° 107 du 29 août 2025)" -> "Arrêté chasse 2025/2026"
+    """
+    sid = meta.get("source_id", "")
+    return {
+        "arrete_2025": "Arrêté chasse 2025/2026",
+        "code_forestier": "Code forestier",
+        "loi_69_33": "Loi armes 69-33",
+        "code_forestier_camper": "Code forestier (camping)",
+        "arretes_parcs_1984": "Arrêtés parcs nationaux 1984",
+        "production_bio_apiculture": "Apiculture bio (arrêté 2005)",
+        "preparation_bio_miel": "Préparation miel bio (arrêté 2005)",
+        "guide_technique_apiculture": "Guide technique apiculture",
+    }.get(sid, meta["source"][:40])
+\end{Verbatim}
+\end{shaded}
+
+Un article isolé (« Il est interdit de… ») ne dit pas de quelle loi il vient. On lui ajoute
+donc un \textbf{préfixe}. Le code en construit \textbf{deux versions}, pour deux usages différents.
+
+\subsubsection*{\texttt{\_libelle\_court}}
+
+\begin{explication}
+\ligne{270--271} Lignes vides.
+\ligne{272--274} Bannière « PREFIXE CONTEXTUEL ».
+\ligne{275} Ligne vide.
+\ligne{276} Le \Verb@_@ initial est une convention Python : fonction \emph{interne} au module,
+à ne pas importer ailleurs.
+\ligne{277--280} Docstring : la source longue (« Arrêté du 27 août 2025 (JORT n° 107…) ») devient
+« Arrêté chasse 2025/2026 ».
+\ligne{281} \Verb@meta.get("source_id", "")@ : lecture sans risque de \Verb@KeyError@ ; renvoie
+\Verb@""@ si la clé est absente.
+\ligne{282} Début d'un dictionnaire littéral, créé à chaque appel.
+\ligne{283--290} Table de correspondance \Verb@source_id@ $\rightarrow$ libellé court, une entrée
+par document du corpus.
+\ligne{291} \Verb@.get(sid, meta["source"][:40])@ : on cherche le libellé ; s'il est absent, on
+prend les 40 premiers caractères de la source. Pour tout nouveau document, il faut penser à
+ajouter une entrée ici, sinon le libellé est tronqué.
+\end{explication}
+
+\subsubsection*{\texttt{construire\_prefixe} : le préfixe LONG}
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=292,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+
+def construire_prefixe(meta: dict, parents: list[str], titre: str) -> str:
+    """
+    PREFIXE LONG — pour BM25 uniquement, et pour l'affichage.
+
+    Il porte la source complete et toute la hierarchie. Sur un index lexical
+    c'est gratuit : BM25 pondere par l'IDF, donc les mots repetes dans les
+    160 chunks ("arrêté", "titre") ont un poids quasi nul automatiquement.
+    """
+    morceaux = [meta["source"]]
+    for p in parents:
+        if p.startswith(("Titre", "Chapitre", "Partie", "Section")):
+            morceaux.append(p)
+    morceaux.append(titre)
+    return " — ".join(morceaux)
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{292--293} Lignes vides.
+\ligne{294} Définition : reçoit les métadonnées, la pile des parents et le titre.
+\ligne{295--301} Docstring. Le préfixe long sert à BM25 et à l'affichage. Sur un index lexical,
+il ne coûte rien : BM25 pondère chaque mot par son \textbf{IDF} (\emph{Inverse Document
+Frequency}). Un mot présent dans presque tous les chunks (« arrêté », « titre ») a un poids
+quasi nul.
+\ligne{302} La liste commence par la source complète.
+\ligne{303} Parcours des parents, du plus général au plus précis.
+\ligne{304} \Verb@str.startswith@ accepte un \emph{tuple} de préfixes : vrai si l'un d'eux
+correspond. On ne garde que les parents \emph{structurels} (Titre, Chapitre, Partie,
+Section). Sont exclus le titre H1 du document et un parent « Article 12 ».
+\ligne{305} Ajout du parent retenu.
+\ligne{306} Ajout du titre de la section.
+\ligne{307} Assemblage avec « — ».\\
+Exemple : « Arrêté du 27 août 2025 (JORT…) — Titre premier : Réglementation générale —
+Article premier ».
+\end{explication}
+
+\subsubsection*{\texttt{construire\_prefixe\_court} : le préfixe COURT}
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=308,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+
+def construire_prefixe_court(meta: dict, titre: str, extra: str = "") -> str:
+    """
+    PREFIXE COURT — pour l'EMBEDDING.
+
+    POURQUOI DEUX PREFIXES :
+    un embedding est un vecteur de taille fixe ou CHAQUE token compte. Le
+    prefixe long fait ~25 tokens IDENTIQUES sur les 57 chunks de l'arrete.
+    Sur un chunk court, il representait la moitie du contenu : tous les
+    vecteurs se ressemblaient et la partie discriminante pesait trop peu.
+    C'est ce qui faisait remonter l'article 10 (colportage) en tete de trois
+    questions sans rapport.
+
+    Contrairement a BM25, l'embedding n'a AUCUN mecanisme equivalent a l'IDF
+    pour ignorer ce qui est commun a tout le corpus. Il faut donc le lui
+    epargner : ici ~6 tokens au lieu de 25.
+    """
+    base = f"{_libelle_court(meta)}, {titre}"
+    return f"{base}. {extra}" if extra else base
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{308--309} Lignes vides.
+\ligne{310} Définition ; \Verb@extra@ est facultatif (chaîne vide par défaut).
+\ligne{311--325} Docstring, la justification la plus importante du fichier. Dans un embedding,
+\textbf{chaque token compte}. Le préfixe long ajoutait environ 25 tokens identiques aux 57
+chunks de l'arrêté. Sur un chunk court, cela représentait la moitié du contenu : tous les
+vecteurs se ressemblaient, et c'est ce qui faisait remonter l'article 10 (colportage) pour
+trois questions sans rapport. Contrairement à BM25, l'embedding \textbf{n'a aucun mécanisme
+équivalent à l'IDF} pour ignorer ce qui est commun à tout le corpus : il faut donc le lui
+épargner (environ 6 tokens au lieu de 25).
+\ligne{326} \Verb@base@ = « libellé court, titre ».
+\ligne{327} Si \Verb@extra@ n'est pas vide, on l'ajoute après un point (le nom du gouvernorat,
+l'espèce d'une ligne de tableau…).
+\end{explication}
+
+\begin{longtable}{p{3cm} p{6cm} p{6cm}}
+\toprule
+ & \textbf{Préfixe long} & \textbf{Préfixe court} \\
+\midrule
+Utilisé par & BM25 (\texttt{texte\_indexe}) et affichage & embedding (\texttt{texte\_embedding}) \\
+Contenu & source complète + Titre/Chapitre + titre & libellé court + titre (+ extra) \\
+Pourquoi & l'IDF neutralise les mots répétés & aucun IDF : les mots répétés diluent le vecteur \\
+\bottomrule
+\end{longtable}
+
+\subsection{\texorpdfstring{\texttt{charger\_manifeste}}{charger\_manifeste} (lignes 328 à 345)}
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=328,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+
+# ============================================================================
+# CHARGEMENT DES METADONNEES D'UN DOMAINE
+# ============================================================================
+
+def charger_manifeste(dossier_domaine: Path) -> dict:
+    """
+    Lit data/corpus/<domaine>/_manifest.json s'il existe.
+
+    Le nom du dossier donne le DOMAINE, mais pas le rang normatif ni la
+    validite : c'est le role du manifeste. S'il est absent (cas de camping/
+    ou app/), on applique META_DEFAUT et tout fonctionne quand meme.
+    """
+    f = dossier_domaine / "_manifest.json"
+    if f.exists():
+        return json.loads(f.read_text(encoding="utf-8"))
+    return {}
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{328--329} Lignes vides.
+\ligne{330--332} Bannière « CHARGEMENT DES METADONNEES D'UN DOMAINE ».
+\ligne{333} Ligne vide.
+\ligne{334} Définition : reçoit le dossier d'un domaine (\Verb@Path@), renvoie un dictionnaire.
+\ligne{335--341} Docstring. Le nom du dossier donne le domaine, mais pas le rang normatif ni la
+validité : c'est le rôle du manifeste. S'il est absent, \Verb@META_DEFAUT@ s'applique.
+\ligne{342} L'opérateur \Verb@/@ est redéfini par \Verb@Path@ pour \emph{joindre des chemins} :
+\Verb@data/corpus/chasse@ \Verb@/@ \Verb@"_manifest.json"@.
+\ligne{343} Le fichier existe-t-il ?
+\ligne{344} Lecture en UTF-8, puis \Verb@json.loads@ convertit le texte JSON en dictionnaire
+Python. Le manifeste est indexé par \emph{nom de fichier} :
+\newline{\footnotesize\Verb@{"code_forestier_chasse.md": {"source": ..., "rang_normatif": "loi", ...}}@}\newline .
+Un JSON mal formé lève une exception et interrompt tout le chunking (pas de \Verb@try@).
+\ligne{345} Pas de manifeste : dictionnaire vide.
+\end{explication}
+
+\subsection{\texorpdfstring{\texttt{chunker\_fichier}}{chunker\_fichier} : le cœur du découpage (lignes 346 à 438)}
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=346,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+
+# ============================================================================
+# TRAITEMENT D'UN FICHIER
+# ============================================================================
+
+def chunker_fichier(chemin: Path, domaine: str, meta_fichier: dict) -> list[dict]:
+    texte = chemin.read_text(encoding="utf-8")
+    chunks = []
+
+    for sec in decouper_sections(texte):
+        corps, avertissements, _ = separer_contenu(sec["lignes"])
+        titre = sec["titre"]
+        prefixe = construire_prefixe(meta_fichier, sec["parents"], titre)
+\end{Verbatim}
+\end{shaded}
+
+Pour chaque section, \textbf{un seul cas} s'applique : gouvernorat, section non-article, ou
+article (avec ou sans tableau). Les avertissements sont traités en plus, pour les articles.
+
+\begin{shaded}
+\begin{Verbatim}[fontsize=\footnotesize]
+section
+  +-- EXCEPTION 1 : titre "Gouvernorat de X"   -> 1 chunk "zone_geographique"
+  +-- EXCEPTION 2 : pas un article (Visas...)  -> 1 chunk "contexte" si > 200 caracteres
+  +-- CAS NORMAL  : un article
+        +-- EXCEPTION 4 : contient un tableau  -> 1 chunk "tableau" par ligne
+        |                                         + 1 chunk "norme" (texte hors tableau)
+        +-- sinon                              -> 1 ou N chunks "norme" (sous_decouper)
+        +-- EXCEPTION 3 (en plus) : chaque avertissement -> 1 chunk "avertissement"
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{346--347} Lignes vides.
+\ligne{348--350} Bannière « TRAITEMENT D'UN FICHIER ».
+\ligne{351} Ligne vide.
+\ligne{352} Définition : chemin du fichier, nom du domaine, métadonnées du fichier. Pas de docstring.
+\ligne{353} Lecture du fichier entier en UTF-8.
+\ligne{354} Liste des chunks produits pour ce fichier.
+\ligne{355} Ligne vide.
+\ligne{356} Boucle sur les sections produites par \Verb@decouper_sections@.
+\ligne{357} Déballage du tuple renvoyé par \Verb@separer_contenu@. Le troisième élément (les
+notes) est affecté à \Verb@_@ : convention Python pour « valeur volontairement ignorée ».
+Les notes de fidélité disparaissent donc ici.
+\ligne{358} Raccourci vers le titre de la section.
+\ligne{359} Préfixe long calculé pour toutes les sections, même celles qui seront ignorées.
+\end{explication}
+
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=360,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+        # ---- EXCEPTION 1 : sous-sections geographiques de l'article 12 ----
+        m_gouv = RE_GOUVERNORAT.match(titre)
+        if m_gouv and corps:
+            # "### Gouvernorat de Siliana" n'est pas un article : c'est une
+            # subdivision de l'article 12. On remonte la pile des parents
+            # pour retrouver l'article de rattachement.
+            art_parent = next((numero_article(p) for p in reversed(sec["parents"])
+                               if numero_article(p)), None)
+            gouv = m_gouv.group(1).strip()
+            court = construire_prefixe_court(
+                meta_fichier, f"Article {art_parent}",
+                f"Réserves de chasse interdites, gouvernorat de {gouv}")
+            chunks.append(_fabriquer(meta_fichier, domaine, art_parent,
+                                     slug(gouv), titre, prefixe, court, corps,
+                                     "zone_geographique", gouv))
+            continue
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{360} Ligne vide.
+\ligne{361} Commentaire : exception 1, les sous-sections géographiques de l'article 12.
+\ligne{362} Le titre est-il « Gouvernorat de X » ?
+\ligne{363} Oui, et la section a du contenu : on la traite.
+\ligne{364--366} Commentaires : « \#\#\# Gouvernorat de Siliana » n'est pas un article mais une
+subdivision de l'article 12, qu'il faut retrouver dans la pile des parents.
+\ligne{367--368} \Verb@next(générateur, None)@ renvoie le premier élément produit par le
+générateur, ou \Verb@None@ s'il n'en produit aucun. Le générateur parcourt les parents
+\textbf{du plus proche au plus lointain} (\Verb@reversed@) et ne produit que ceux qui sont des
+articles. Résultat : \Verb@art_parent = "12"@. (\Verb@numero_article@ est appelé deux fois
+par parent : petite redondance.)
+\ligne{369} Nom du gouvernorat : groupe 1 de la regex, sans espaces.
+\ligne{370--372} Préfixe court avec titre « Article 12 » et extra « Réserves de chasse interdites,
+gouvernorat de Siliana ». Ce texte est écrit en dur : toute section « Gouvernorat de… » de
+n'importe quel domaine recevrait ce libellé.
+\ligne{373--375} Création du chunk par \Verb@_fabriquer@. Arguments, dans l'ordre : métadonnées,
+domaine, article (\Verb@"12"@), sous-clé \Verb@slug(gouv)@, titre, préfixe long, préfixe
+court, texte (\Verb@corps@), type \Verb@"zone_geographique"@, gouvernorat.
+Identifiant obtenu : \Verb@arrete_2025_art12_siliana@ (24 chunks de ce type dans le corpus).
+\ligne{376} \Verb@continue@ : section traitée, on passe à la suivante.
+\end{explication}
+
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=377,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+        article = numero_article(titre)
+
+        # ---- EXCEPTION 2 : sections qui ne sont pas des articles ----------
+        if article is None:
+            # Visas, Preambule, Lacunes connues. Non normatifs mais utiles.
+            # "Lacunes connues" permet au bot de repondre "cette information
+            # n'est pas dans mon corpus" au lieu d'inventer.
+            if corps and len(corps) > config.TAILLE_MIN_ALERTE:
+                court = construire_prefixe_court(meta_fichier, titre)
+                chunks.append(_fabriquer(meta_fichier, domaine, None,
+                                         slug(titre), titre, prefixe, court,
+                                         corps, "contexte", None))
+            continue
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{377} Ligne vide.
+\ligne{378} Numéro d'article du titre, ou \Verb@None@.
+\ligne{379} Ligne vide.
+\ligne{380} Commentaire : exception 2, sections qui ne sont pas des articles.
+\ligne{381} Ce n'est pas un article…
+\ligne{382--384} Commentaires : Visas, Préambule, « Lacunes connues ». Ces sections ne sont pas
+normatives mais utiles : « Lacunes connues » permet au bot de répondre « cette information
+n'est pas dans mon corpus » au lieu d'inventer.
+\ligne{385} … on ne crée un chunk que si le texte dépasse \Verb@TAILLE_MIN_ALERTE@ (200 caractères).
+Cela élimine les titres vides (« \#\# Chapitre II » sans texte propre).
+\ligne{386} Préfixe court avec le titre de la section.
+\ligne{387--389} Chunk de type \Verb@"contexte"@, sans article. La sous-clé est
+\Verb@slug(titre)@. Identifiant réel : \Verb@arrete_2025_artvisas_visas@.
+\ligne{390} \Verb@continue@ : une section trop courte est ignorée \textbf{sans message}.
+\end{explication}
+\attention c'est aussi le cas des documents sans articles (\fichier{app/}, guides
+d'apiculture) : chacune de leurs sections est un « contexte ». Vérifié sur
+\fichier{aide\_application.md} : trois réponses de la FAQ font moins de 200 caractères et
+\textbf{ne sont jamais indexées} : « Puis-je créer une alerte sans réseau ? » (148),
+« Comment suivre mes signalements ? » (173), « Les réponses du chatbot ont-elles une valeur
+légale ? » (160). Le chatbot ne peut donc pas répondre à ces questions.\par
+
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=391,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+        # ---- CAS NORMAL : un article --------------------------------------
+        if corps:
+            # --- EXCEPTION 4 : article contenant un tableau ----------------
+            # Une ligne de tableau = un chunk. Sinon les 10 especes du
+            # tableau de l'article premier se noient dans un seul vecteur.
+            lignes_tab = eclater_tableau(corps) if contient_tableau(corps) else None
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{391} Ligne vide.
+\ligne{392} Commentaire : cas normal, un article.
+\ligne{393} L'article a-t-il du texte ? Un article sans corps ne produit pas de chunk
+« norme », mais ses avertissements sont traités quand même (ligne 429, hors de ce \Verb@if@).
+\ligne{394--396} Commentaires : exception 4, une ligne de tableau = un chunk.
+\ligne{397} Expression conditionnelle : on n'appelle \Verb@eclater_tableau@ que si le texte
+contient un tableau ; sinon \Verb@lignes_tab = None@.
+\end{explication}
+
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=398,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+            if lignes_tab:
+                # le texte hors tableau (alineas qui suivent) devient un chunk
+                hors_tableau = "\n".join(
+                    l for l in corps.splitlines()
+                    if not RE_LIGNE_TABLEAU.match(l)).strip()
+
+                for sujet, phrase in lignes_tab:
+                    court = construire_prefixe_court(meta_fichier, titre, sujet)
+                    chunks.append(_fabriquer(
+                        meta_fichier, domaine, article, slug(sujet, 30), titre,
+                        f"{prefixe} — {sujet}", court, phrase, "tableau", None))
+
+                if len(hors_tableau) > config.TAILLE_MIN_ALERTE:
+                    court = construire_prefixe_court(meta_fichier, titre)
+                    chunks.append(_fabriquer(
+                        meta_fichier, domaine, article, "suite", titre,
+                        prefixe, court, hors_tableau, "norme", None))
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{398} Ligne vide.
+\ligne{399} Le tableau est exploitable (liste non vide).
+\ligne{400} Commentaire : le texte hors tableau devient un chunk.
+\ligne{401--403} \Verb@hors_tableau@ : on garde les lignes du corps qui \emph{ne} sont \emph{pas}
+des lignes de tableau (expression génératrice passée à \Verb@join@), puis on nettoie.
+\ligne{404} Ligne vide.
+\ligne{405} Pour chaque ligne du tableau : déballage du couple \Verb@(sujet, phrase)@.
+\ligne{406} Préfixe court avec \Verb@extra = sujet@ : l'espèce apparaît dans le préfixe
+\emph{et} dans la phrase, ce qui renforce son poids dans le vecteur.
+\ligne{407--409} Chunk de type \Verb@"tableau"@ : sous-clé \Verb@slug(sujet, 30)@ (tronquée à
+30 caractères), préfixe long complété par « — sujet », texte = la phrase.
+Identifiant réel : \newline{\footnotesize\Verb@arrete_2025_art1_lievre_perdrix_caille_sedentai@}\newline . Deux lignes dont
+les 30 premiers caractères seraient identiques produiraient le même identifiant.
+\ligne{410} Ligne vide.
+\ligne{411} Le texte hors tableau fait plus de 200 caractères…
+\ligne{412} … préfixe court sans extra…
+\ligne{413--415} … et chunk \Verb@"norme"@ de sous-clé \Verb@"suite"@
+(\Verb@arrete_2025_art1_suite@). En dessous de 200 caractères, ce texte est perdu.
+\end{explication}
+
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=416,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+            else:
+                blocs = sous_decouper(corps)
+                for i, bloc in enumerate(blocs, start=1):
+                    # Si l'article a ete sous-decoupe, on l'indique au LLM
+                    # pour qu'il sache qu'il ne voit qu'un extrait.
+                    suffixe = f" (partie {i}/{len(blocs)})" if len(blocs) > 1 else ""
+                    court = construire_prefixe_court(meta_fichier, titre)
+                    chunks.append(_fabriquer(meta_fichier, domaine, article,
+                                             f"p{i}" if len(blocs) > 1 else None,
+                                             titre, prefixe + suffixe, court,
+                                             bloc, "norme", None))
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{416} Pas de tableau, ou tableau mal formé (\Verb@eclater_tableau@ a renvoyé \Verb@None@).
+Dans ce dernier cas, \Verb@sous_decouper@ renvoie le texte entier sans le couper.
+\ligne{417} Découpage éventuel en blocs de 1500 caractères au maximum.
+\ligne{418} \Verb@enumerate(blocs, start=1)@ fournit l'indice \Verb@i@ (à partir de 1) et le bloc.
+\ligne{419--420} Commentaires : si l'article a été découpé, on l'indique au LLM.
+\ligne{421} \Verb@suffixe@ = « (partie 2/3) » s'il y a plusieurs blocs, chaîne vide sinon.
+\ligne{422} Préfixe court, identique pour toutes les parties.
+\ligne{423--426} Chunk \Verb@"norme"@ : sous-clé \Verb@"p1"@, \Verb@"p2"@… s'il y a plusieurs
+blocs, sinon \Verb@None@. Le suffixe est ajouté au préfixe long.
+Identifiants réels : \Verb@code_forestier_art165@ (un bloc), \Verb@arrete_2025_art3_p1@ (plusieurs).
+\end{explication}
+
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=427,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+        # ---- EXCEPTION 3 : avertissements de concordance -------------------
+        for j, avert in enumerate(avertissements, start=1):
+            court = construire_prefixe_court(
+                meta_fichier, titre, "avertissement de concordance")
+            chunks.append(_fabriquer(meta_fichier, domaine, article,
+                                     f"avert{j}",
+                                     f"{titre} — avertissement de concordance",
+                                     prefixe + " — avertissement de concordance",
+                                     court, avert, "avertissement", None))
+
+    return chunks
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{427} Ligne vide.
+\ligne{428} Commentaire : exception 3, les avertissements de concordance.
+\ligne{429} Parcours des avertissements, numérotés à partir de 1. Cette boucle est au niveau de
+\Verb@if corps@ : elle s'exécute pour tout article, même sans corps.
+\ligne{430--431} Préfixe court avec l'extra « avertissement de concordance ».
+\ligne{432--436} Chunk \Verb@"avertissement"@ : sous-clé \Verb@avert1@, \Verb@avert2@… ; le titre
+et le préfixe long sont complétés par « — avertissement de concordance ».
+Identifiants réels : \Verb@code_forestier_art161_avert1@ et \Verb@loi_69_33_art16_avert1@.
+Le type \Verb@"avertissement"@ fera ajouter l'étiquette \Verb@[AVERTISSEMENT DE CONCORDANCE]@
+dans le prompt (\fichier{generator.py}).
+\ligne{437} Ligne vide.
+\ligne{438} Renvoi des chunks du fichier.
+\end{explication}
+\attention un avertissement placé dans une section « Gouvernorat » ou non-article est perdu,
+car les \Verb@continue@ des lignes 376 et 390 sautent cette boucle. Aucun cas actuel dans le corpus.\par
+
+\subsection{\texorpdfstring{\texttt{\_fabriquer}}{\_fabriquer} : la forme d'un chunk (lignes 439 à 479)}
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=439,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+
+def _fabriquer(meta_fichier, domaine, article, sous_cle, titre, prefixe,
+               prefixe_court, texte, type_chunk, gouvernorat) -> dict:
+    """
+    Fabrique un chunk normalise.
+
+    Les metadonnees restent des types simples (str, int, float, bool) :
+    ni liste, ni dict. D'ou les alias joints en une seule chaine. Cela
+    garde le format lisible en JSON et compatible avec n'importe quel
+    magasin de vecteurs.
+    """
+    ident = f"{meta_fichier['source_id']}_art{article or slug(titre, 20)}"
+    if sous_cle:
+        ident += f"_{sous_cle}"
+
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{439--440} Lignes vides.
+\ligne{441--442} Définition sur deux lignes (continuation implicite dans les parenthèses), avec
+10 paramètres positionnels et sans annotations de type.
+\ligne{443--450} Docstring. Les métadonnées ne contiennent que des types simples (\Verb@str@,
+\Verb@int@, \Verb@float@, \Verb@bool@), jamais de listes ni de dictionnaires. C'est pourquoi
+les alias sont joints en une seule chaîne. Le format reste lisible en JSON et compatible
+avec n'importe quelle base vectorielle (ChromaDB, par exemple, refuse les listes en métadonnées).
+\ligne{451} Identifiant : \Verb@source_id@ + \Verb@_art@ + numéro d'article. Sans article,
+\Verb@article or slug(titre, 20)@ prend le slug du titre (20 caractères).
+\ligne{452--453} Si une sous-clé existe (\Verb@siliana@, \Verb@p2@, \Verb@suite@, \Verb@avert1@…),
+on l'ajoute avec \Verb@+=@ (concaténation). Pour une section non-article, le titre apparaît
+deux fois : \newline{\footnotesize\Verb@aide_application_artcomment_modifier_mon_comment_modifier_mon_profil@}\newline .
+\ligne{454} Ligne vide.
+\end{explication}
+
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=455,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+    return {
+        "id": ident,
+        # texte_embedding -> COURT, ce qu'on vectorise. Chaque token compte.
+        "texte_embedding": f"{prefixe_court}\n{texte}",
+        # texte_indexe -> LONG, ce que BM25 lit. L'IDF neutralise le commun.
+        "texte_indexe": f"{prefixe}\n\n{texte}",
+        # texte_affiche -> ce qu'on MONTRE au LLM et a l'utilisateur
+        "texte_affiche": texte,
+        "prefixe": prefixe,
+        "prefixe_court": prefixe_court,
+        "metadata": {
+            "domaine": domaine,
+            "source": meta_fichier["source"],
+            "source_id": meta_fichier["source_id"],
+            "rang_normatif": meta_fichier["rang_normatif"],
+            "rang_poids": meta_fichier["rang_poids"],
+            "validite": meta_fichier["validite"],
+            "article": article or "",
+            "titre": titre,
+            "type": type_chunk,
+            "gouvernorat": gouvernorat or "",
+            "alias": " | ".join(extraire_alias_sic(texte)),
+            "nb_caracteres": len(texte),
+        },
+    }
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{455} Renvoi d'un dictionnaire littéral.
+\ligne{456} \Verb@"id"@ : identifiant unique du chunk. Il relie \fichier{chunks.json},
+\fichier{vecteurs.npy} (même ordre) et \fichier{bm25.pkl}.
+\ligne{457} Commentaire.
+\ligne{458} \Verb@"texte_embedding"@ = préfixe \textbf{court} + retour à la ligne + texte. C'est
+ce que \fichier{indexer.py} transforme en vecteur.
+\ligne{459} Commentaire.
+\ligne{460} \Verb@"texte_indexe"@ = préfixe \textbf{long} + ligne vide + texte. C'est ce que BM25 lit.
+\ligne{461} Commentaire.
+\ligne{462} \Verb@"texte_affiche"@ = le texte seul. C'est ce qu'on envoie au LLM et qu'on montre
+à l'utilisateur (via \fichier{store.py}).
+\ligne{463} \Verb@"prefixe"@ : préfixe long, conservé pour le débogage.
+\ligne{464} \Verb@"prefixe_court"@ : préfixe court, conservé pour le débogage.
+\ligne{465} Ouverture du sous-dictionnaire \Verb@"metadata"@.
+\ligne{466} \Verb@domaine@ : nom du dossier (\Verb@chasse@, \Verb@camper@…). Sert au
+\textbf{filtrage par spécialité} dans \fichier{store.py} et \fichier{retriever.py}.
+\ligne{467} \Verb@source@ : nom complet du texte, cité par le LLM et affiché dans les sources.
+\ligne{468} \Verb@source_id@ : identifiant court du texte.
+\ligne{469} \Verb@rang_normatif@ (\Verb@loi@, \Verb@arrete@, \Verb@documentaire@) : affiché dans
+l'en-tête de l'extrait, il permet au LLM d'appliquer la hiérarchie des normes (règle 4 du prompt).
+\ligne{470} \Verb@rang_poids@ : version numérique du rang (1 = loi, 2 = arrêté, 9 = documentaire).
+Il n'est lu par aucun autre fichier pour l'instant.
+\ligne{471} \Verb@validite@ (\Verb@permanent@, \Verb@saison_2025_2026@) : permet au LLM de
+signaler une période écoulée (règle 3 du prompt).
+\ligne{472} \Verb@article@ : numéro ou \Verb@""@. On utilise une chaîne vide plutôt que
+\Verb@None@ pour garder des types simples.
+\ligne{473} \Verb@titre@ : titre de la section.
+\ligne{474} \Verb@type@ : \Verb@norme@, \Verb@tableau@, \Verb@zone_geographique@,
+\Verb@contexte@ ou \Verb@avertissement@. \fichier{main.py} n'affiche comme sources que les
+trois premiers.
+\ligne{475} \Verb@gouvernorat@ : nom ou \Verb@""@.
+\ligne{476} \Verb@alias@ : les formes correctes des coquilles, jointes par \Verb@" | "@.
+\fichier{indexer.py} les ajoute au texte indexé par BM25.
+\ligne{477} \Verb@nb_caracteres@ : longueur du texte affiché, en \emph{caractères} (pas en tokens).
+Sert au rapport de contrôle.
+\ligne{478} Fermeture de \Verb@metadata@.
+\ligne{479} Fermeture du chunk.
+\end{explication}
+
+\subsection{\texorpdfstring{\texttt{chunker\_corpus}}{chunker\_corpus} : le point d'entrée (lignes 480 à 523)}
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=480,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+
+# ============================================================================
+# POINT D'ENTREE : SCAN DE TOUS LES DOMAINES
+# ============================================================================
+
+def chunker_corpus(verbeux: bool = True) -> list[dict]:
+    """
+    Parcourt data/corpus/<domaine>/*.md et produit tous les chunks.
+    Le nom du sous-dossier devient la metadonnee "domaine".
+    """
+    tous = []
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{480--481} Lignes vides.
+\ligne{482--484} Bannière « POINT D'ENTREE : SCAN DE TOUS LES DOMAINES ».
+\ligne{485} Ligne vide.
+\ligne{486} Définition : \Verb@verbeux@ (affichage de la progression) vaut \Verb@True@ par défaut.
+C'est la fonction appelée par \fichier{scripts/build\_embeddings.py}.
+\ligne{487--490} Docstring : parcourt \fichier{data/corpus/<domaine>/*.md} ; le nom du
+sous-dossier devient la métadonnée \Verb@domaine@.
+\ligne{491} \Verb@tous@ accumulera les chunks de tous les fichiers.
+\end{explication}
+
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=492,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+    for dossier in sorted(config.CORPUS_DIR.iterdir()):
+        if not dossier.is_dir():
+            continue
+        domaine = dossier.name
+        manifeste = charger_manifeste(dossier)
+        fichiers = sorted(dossier.glob("*.md"))
+
+        if not fichiers:
+            continue
+        if verbeux:
+            print(f"\n  [{domaine}]")
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{492} Ligne vide.
+\ligne{493} \Verb@CORPUS_DIR.iterdir()@ liste le contenu de \fichier{data/corpus/}. L'ordre
+renvoyé par le système n'est pas garanti : \Verb@sorted@ impose un ordre alphabétique stable
+(\fichier{apiculture}, \fichier{app}, \fichier{camper}, \fichier{chasse}). C'est essentiel :
+\fichier{vecteurs.npy} et \fichier{bm25.pkl} retrouvent les chunks \textbf{par position}, et
+l'empreinte du cache d'embedding dépend de l'ordre.
+\ligne{494--495} On ignore ce qui n'est pas un dossier (un fichier posé à la racine du corpus).
+\ligne{496} Nom du dossier = domaine.
+\ligne{497} Lecture du manifeste du domaine.
+\ligne{498} \Verb@glob("*.md")@ : les fichiers Markdown du dossier, non récursif (les
+sous-dossiers sont ignorés). \fichier{\_manifest.json} n'est pas concerné. Triés pour la même
+raison qu'à la ligne 493.
+\ligne{499} Ligne vide.
+\ligne{500--501} Dossier sans \fichier{.md} : on passe au suivant.
+\ligne{502--503} Affichage du nom du domaine entre crochets.
+\end{explication}
+
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=504,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+        for f in fichiers:
+            meta = {**config.META_DEFAUT, **manifeste.get(f.name, {})}
+            # Si aucun manifeste, on derive un source_id du nom de fichier
+            # pour que les identifiants de chunks restent uniques.
+            if f.name not in manifeste:
+                meta["source_id"] = slug(f.stem, 30)
+                meta["source"] = f.stem.replace("_", " ")
+            c = chunker_fichier(f, domaine, meta)
+            tous.extend(c)
+            if verbeux:
+                print(f"    {f.name:38s} -> {len(c):3d} chunks")
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{504} Ligne vide.
+\ligne{505} Parcours des fichiers du domaine.
+\ligne{506} \Verb@{**A, **B}@ \emph{fusionne} deux dictionnaires : on part de \Verb@META_DEFAUT@,
+puis les clés du manifeste pour ce fichier \textbf{écrasent} les valeurs par défaut.
+\Verb@manifeste.get(f.name, {})@ renvoie \Verb@{}@ si le fichier n'est pas décrit.
+\ligne{507--508} Commentaires : sans manifeste, on dérive un \Verb@source_id@ du nom de fichier
+pour que les identifiants restent uniques.
+\ligne{509} Le fichier n'est pas décrit dans le manifeste…
+\ligne{510} … \Verb@source_id@ = slug du nom sans extension (\Verb@f.stem@), limité à 30
+caractères. Sans cela, tous ces fichiers auraient \Verb@source_id = "interne"@ et leurs
+identifiants pourraient entrer en collision.
+\ligne{511} … \Verb@source@ lisible : « aide\_application » $\rightarrow$ « aide application ».
+\ligne{512} Découpage du fichier.
+\ligne{513} \Verb@extend@ ajoute les \emph{éléments} de la liste \Verb@c@ à \Verb@tous@
+(\Verb@append@ ajouterait la liste entière comme un seul élément).
+\ligne{514--515} Affichage : \Verb@{f.name:38s}@ aligne le nom à gauche sur 38 caractères,
+\Verb@{len(c):3d}@ écrit le nombre sur 3 caractères. On obtient une colonne bien alignée.
+\end{explication}
+
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=516,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+    config.INDEX_DIR.mkdir(parents=True, exist_ok=True)
+    config.CHUNKS_FILE.write_text(
+        json.dumps(tous, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    if verbeux and tous:
+        _rapport(tous)
+    return tous
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{516} Ligne vide.
+\ligne{517} Création de \fichier{data/index/} : \Verb@parents=True@ crée aussi les dossiers
+intermédiaires, \Verb@exist_ok=True@ évite une erreur si le dossier existe (équivalent de
+\Verb@mkdir -p@).
+\ligne{518--519} Écriture de \fichier{chunks.json}, qui écrase l'ancien fichier.
+\Verb@ensure_ascii=False@ garde les accents lisibles (sinon « é » deviendrait
+\Verb@é@) ; \Verb@indent=2@ rend le fichier lisible par un humain.
+\ligne{520} Ligne vide.
+\ligne{521--522} Rapport de contrôle seulement en mode verbeux \emph{et} s'il y a des chunks :
+\Verb@_rapport@ appelle \Verb@min@ et divise par \Verb@len@, ce qui échouerait sur une liste vide.
+\ligne{523} Renvoi de tous les chunks à l'appelant (\fichier{build\_embeddings.py}, qui les
+passe ensuite à \Verb@embedder@).
+\end{explication}
+
+\subsection{\texorpdfstring{\texttt{\_rapport}}{\_rapport} et exécution directe (lignes 524 à 551)}
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=524,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+
+def _rapport(chunks: list[dict]) -> None:
+    """Controle qualite affiche apres le chunking."""
+    print(f"\n  TOTAL : {len(chunks)} chunks -> {config.CHUNKS_FILE}")
+
+    for cle in ("domaine", "type"):
+        compte = {}
+        for c in chunks:
+            v = c["metadata"][cle]
+            compte[v] = compte.get(v, 0) + 1
+        print(f"  Par {cle} : {compte}")
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{524--525} Lignes vides.
+\ligne{526} Définition : \Verb@-> None@, la fonction ne renvoie rien, elle affiche.
+\ligne{527} Docstring : contrôle qualité affiché après le chunking.
+\ligne{528} Nombre total de chunks et chemin du fichier.
+\ligne{529} Ligne vide.
+\ligne{530} Deux passages : un comptage par \Verb@domaine@, un par \Verb@type@.
+\ligne{531} Dictionnaire de comptage \{valeur : nombre\}.
+\ligne{532} Parcours de tous les chunks.
+\ligne{533} Valeur de la métadonnée étudiée.
+\ligne{534} Idiome de comptage : \Verb@compte.get(v, 0)@ renvoie 0 la première fois, puis on
+ajoute 1. Équivalent de \Verb@collections.Counter@.
+\ligne{535} Affichage, par exemple \newline{\footnotesize\Verb@Par domaine : {'apiculture': 61, 'app': 7, ...}@}\newline .
+\end{explication}
+
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=536,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+    tailles = [c["metadata"]["nb_caracteres"] for c in chunks]
+    print(f"  Taille : min={min(tailles)} / moy={sum(tailles)//len(tailles)} "
+          f"/ max={max(tailles)}")
+
+    courts = [c["id"] for c in chunks
+              if c["metadata"]["nb_caracteres"] < config.TAILLE_MIN_ALERTE
+              and c["metadata"]["type"] == "norme"]
+    if courts:
+        print(f"  Chunks courts (< {config.TAILLE_MIN_ALERTE} car.) : {len(courts)}"
+              f" — sauves par le prefixe contextuel")
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{536} Ligne vide.
+\ligne{537} Liste des longueurs de tous les chunks.
+\ligne{538--539} Minimum, moyenne et maximum. \Verb@//@ est la division \emph{entière}.
+Deux f-strings consécutives sont concaténées automatiquement par Python.
+\ligne{540} Ligne vide.
+\ligne{541--543} Identifiants des chunks \Verb@"norme"@ de moins de 200 caractères.
+\ligne{544} S'il y en a…
+\ligne{545--546} … on affiche leur nombre, avec la mention « sauvés par le préfixe contextuel » :
+un article très court reste compréhensible grâce à la source et au titre ajoutés.
+\end{explication}
+
+\begin{shaded}
+\begin{Verbatim}[numbers=left,firstnumber=547,numbersep=6pt,fontsize=\footnotesize,xleftmargin=1.2em]
+
+
+if __name__ == "__main__":
+    print("\n=== ETAPE 1 : CHUNKING ===")
+    chunker_corpus()
+\end{Verbatim}
+\end{shaded}
+
+\begin{explication}
+\ligne{547--548} Lignes vides.
+\ligne{549} \Verb@__name__@ vaut \Verb@"__main__"@ seulement quand le fichier est
+\emph{exécuté} (\Verb@python -m rag.chunker@), et non quand il est \emph{importé} par un autre
+module. Le bloc suivant ne s'exécute donc pas lors d'un \Verb@import@.
+\ligne{550} Affichage du titre de l'étape.
+\ligne{551} Lancement du chunking complet, en mode verbeux par défaut. Dernière ligne du fichier.
+\end{explication}
+
+
+\newpage
+% ============================================================================
+\section{Remarques relevées pendant la lecture}
+% ============================================================================
+
+Rien de bloquant pour le fonctionnement actuel, sauf le point 1, qui a un effet réel.
+
+\begin{enumerate}
+  \item \textbf{Sections courtes perdues (lignes 385 et 390).} Une section qui n'est pas un
+        article et fait 200 caractères ou moins est ignorée sans message. Dans
+        \fichier{aide\_application.md}, trois réponses de la FAQ ne sont jamais indexées :
+        « Puis-je créer une alerte sans réseau ? » (148 caractères), « Comment suivre mes
+        signalements ? » (173) et « Les réponses du chatbot ont-elles une valeur légale ? »
+        (160). Piste : un seuil plus bas pour les documents sans articles, ou aucun seuil
+        quand le titre est une question.
+  \item \textbf{\texttt{RE\_NOTE\_FIDELITE} n'est jamais utilisée (ligne 46).} Tout bloc
+        \Verb@>@ qui n'est pas un avertissement est classé « note ».
+  \item \textbf{Double point dans les chunks tableau (ligne 232)} : « (El khedra).. Date
+        d'ouverture ».
+  \item \textbf{Commentaire mal placé (ligne 53)} : il décrit la ligne 52.
+  \item \textbf{Texte avant le premier titre perdu (ligne 129).}
+  \item \textbf{Avertissements perdus hors article (lignes 376 et 390)} : aucun cas actuel.
+  \item \textbf{« Article 1er » non reconnu (ligne 40)} à cause de \Verb@\b@ : le corpus
+        actuel écrit « Article premier ».
+  \item \textbf{Identifiants redondants (lignes 451--453)} pour les sections non-article, et
+        collision possible si deux lignes de tableau ont les mêmes 30 premiers caractères.
+  \item \textbf{\texttt{rang\_poids} n'est lu par aucun autre fichier (ligne 470).}
+\end{enumerate}
+
+% ============================================================================
+\section{Résumé : le rôle de \texorpdfstring{\texttt{chunker.py}}{chunker.py} dans le RAG}
+% ============================================================================
+
+\fichier{chunker.py} est la \textbf{première étape} du RAG et elle en fixe la qualité : un
+chunk mal découpé ne peut être rattrapé ni par le retriever, ni par le LLM. Le fichier
+transforme les \fichier{.md} du corpus en environ 320 morceaux autonomes enregistrés dans
+\fichier{data/index/chunks.json}.
+
+\begin{itemize}
+  \item \textbf{Découpage sémantique} : un article = un chunk, repéré par la regex
+        « Article N », quel que soit le niveau de titre.
+  \item \textbf{Contexte conservé} : une pile de parents garde la hiérarchie
+        Titre $\rightarrow$ Chapitre $\rightarrow$ Article.
+  \item \textbf{Cas particuliers} : tableaux découpés ligne par ligne, articles longs coupés
+        par paragraphes (1500 caractères au maximum), article 12 découpé par gouvernorat,
+        avertissements de concordance transformés en chunks à part.
+  \item \textbf{Nettoyage} : notes éditoriales retirées ; coquilles officielles gardées, avec
+        leur forme correcte en alias pour BM25.
+  \item \textbf{Trois textes par chunk} : préfixe court + texte pour l'embedding, préfixe
+        long + texte pour BM25, texte seul pour le LLM.
+  \item \textbf{Métadonnées} (domaine, source, rang normatif, validité, article, type) : elles
+        servent à \emph{filtrer} (spécialité de l'utilisateur), \emph{citer} (numéro d'article)
+        et \emph{dater} (validité de la saison) dans les étapes suivantes.
+\end{itemize}
+
+Le fichier suivant dans le flux est \fichier{indexer.py} : il transforme ces chunks en
+vecteurs (\fichier{vecteurs.npy}) et en index lexical (\fichier{bm25.pkl}).
+
+\end{document}

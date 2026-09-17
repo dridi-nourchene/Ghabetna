@@ -209,4 +209,50 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get loading => 'جارٍ التحميل...';
+
+  @override
+  String get createAlertCritical => 'حادث حرج';
+
+  @override
+  String get createAlertCriticalSub =>
+      'فعّل هذا الخيار إذا كان الوضع يتطلب تدخلاً عاجلاً';
+
+  @override
+  String get alertCriticalBadge => 'حرج';
+
+  @override
+  String get navProfile => 'الملف الشخصي';
+
+  @override
+  String get profileRoleAgent => 'عون ميداني';
+
+  @override
+  String get profileContact => 'معلومات الاتصال';
+
+  @override
+  String get profileEmail => 'البريد الإلكتروني';
+
+  @override
+  String get profilePhone => 'الهاتف';
+
+  @override
+  String get profileAssignment => 'التعيين';
+
+  @override
+  String get profileForest => 'الغابة';
+
+  @override
+  String get profileParcelle => 'القطعة';
+
+  @override
+  String get profileSupervisor => 'المشرف';
+
+  @override
+  String get profileSupervisorPhone => 'هاتف المشرف';
+
+  @override
+  String get profileNotAssigned => 'لم يتم تعيينك في أي قطعة حاليًا.';
+
+  @override
+  String get profileLoadError => 'تعذر تحميل ملفك الشخصي.';
 }

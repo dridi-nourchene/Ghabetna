@@ -7,6 +7,7 @@ import 'package:agent_app/features/auth/providers/auth_provider.dart';
 import 'package:agent_app/features/auth/screens/login_screen.dart';
 import 'package:agent_app/features/alert/screens/create_alert_screen.dart';
 import 'package:agent_app/features/alert/screens/my_alerts_screen.dart';
+import 'package:agent_app/features/profile/screens/profile_screen.dart';
 import 'package:agent_app/core/widgets/main_scaffold.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -43,6 +44,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path:    '/my-alerts',
             builder: (_, __) => const MyAlertsBody(),
+          ),
+          GoRoute(
+            path:    '/profile',
+            builder: (_, __) => const ProfileScreen(),
           ),
         ],
       ),

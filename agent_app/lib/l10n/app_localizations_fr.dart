@@ -210,4 +210,51 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get loading => 'Chargement...';
+
+  @override
+  String get createAlertCritical => 'Incident critique';
+
+  @override
+  String get createAlertCriticalSub =>
+      'Cochez si la situation nécessite une intervention urgente';
+
+  @override
+  String get alertCriticalBadge => 'Critique';
+
+  @override
+  String get navProfile => 'Profil';
+
+  @override
+  String get profileRoleAgent => 'Agent de terrain';
+
+  @override
+  String get profileContact => 'Contact';
+
+  @override
+  String get profileEmail => 'Email';
+
+  @override
+  String get profilePhone => 'Téléphone';
+
+  @override
+  String get profileAssignment => 'Affectation';
+
+  @override
+  String get profileForest => 'Forêt';
+
+  @override
+  String get profileParcelle => 'Parcelle';
+
+  @override
+  String get profileSupervisor => 'Superviseur';
+
+  @override
+  String get profileSupervisorPhone => 'Tél. superviseur';
+
+  @override
+  String get profileNotAssigned =>
+      'Vous n\'êtes affecté à aucune parcelle pour le moment.';
+
+  @override
+  String get profileLoadError => 'Impossible de charger votre profil.';
 }

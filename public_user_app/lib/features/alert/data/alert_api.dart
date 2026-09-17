@@ -19,10 +19,12 @@ class AlertApi {
     double? agentLat,
     double? agentLng,
     File? photo,
+    bool critique = false,
   }) async {
     final champs = <String, String>{
       'type': type.valeur,
       'forest_id': forestId,
+      'is_critical': critique.toString(),
       if (description != null) 'description': description,
       if (incidentLat != null) 'incident_lat': incidentLat.toString(),
       if (incidentLng != null) 'incident_lng': incidentLng.toString(),

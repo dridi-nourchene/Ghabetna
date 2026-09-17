@@ -179,6 +179,7 @@ async def _alert_to_dict(
         "type":               alert.type.value,
         "status":             alert.status.value,
         "source":             alert.source.value,
+        "is_critical":        alert.is_critical,
         "description":        alert.description,
         "agent_nom":          agent_info.get("nom"),
         "agent_phone":        agent_info.get("phone"),
@@ -264,6 +265,7 @@ async def create_alert(
         agent_id        = agent_id,
         forest_id       = data.forest_id,
         source          = source,
+        is_critical     = data.is_critical,
     )
     db.add(alert)
     await db.commit()
@@ -279,6 +281,10 @@ async def create_alert(
                 "status":     alert.status.value,
                 "forest_id":  str(alert.forest_id),
                 "agent_id":   str(alert.agent_id),
+                # Provenance transmise a analytics_ms : sans elle, un
+                # signalement citoyen y serait compte comme un signalement
+                # d'agent et s'afficherait sous un nom introuvable.
+                "source":     alert.source.value,
                 "created_at": alert.created_at.isoformat(),
             },
         )
@@ -361,6 +367,7 @@ async def get_supervisor_map_points(
             "type":            a.type.value,
             "status":          a.status.value,
             "source":          a.source.value,
+            "is_critical":     a.is_critical,
             "incident_lat":    a.incident_lat,
             "incident_lng":    a.incident_lng,
             "location_source": a.location_source.value,
@@ -383,6 +390,7 @@ async def get_map_points(db: AsyncSession) -> list[dict]:
             "type":            a.type.value,
             "status":          a.status.value,
             "source":          a.source.value,
+            "is_critical":     a.is_critical,
             "incident_lat":    a.incident_lat,
             "incident_lng":    a.incident_lng,
             "location_source": a.location_source.value,

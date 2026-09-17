@@ -76,5 +76,22 @@
   "statusUpdated": "تم تحديث الحالة",
   "retry": "إعادة المحاولة",
   "cancel": "إلغاء",
-  "loading": "جارٍ التحميل..."
+  "loading": "جارٍ التحميل...",
+
+  "createAlertCritical": "حادث حرج",
+  "createAlertCriticalSub": "فعّل هذا الخيار إذا كان الوضع يتطلب تدخلاً عاجلاً",
+  "alertCriticalBadge": "حرج",
+
+  "navProfile": "الملف الشخصي",
+  "profileRoleAgent": "عون ميداني",
+  "profileContact": "معلومات الاتصال",
+  "profileEmail": "البريد الإلكتروني",
+  "profilePhone": "الهاتف",
+  "profileAssignment": "التعيين",
+  "profileForest": "الغابة",
+  "profileParcelle": "القطعة",
+  "profileSupervisor": "المشرف",
+  "profileSupervisorPhone": "هاتف المشرف",
+  "profileNotAssigned": "لم يتم تعيينك في أي قطعة حاليًا.",
+  "profileLoadError": "تعذر تحميل ملفك الشخصي."
 }

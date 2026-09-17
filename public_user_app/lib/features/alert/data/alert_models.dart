@@ -87,6 +87,7 @@ class AlertModel {
     required this.type,
     required this.status,
     this.description,
+    this.critique = false,
     this.forestName,
     this.imageUrl,
     this.supervisorComment,
@@ -98,6 +99,7 @@ class AlertModel {
   final AlertType type;
   final AlertStatus status;
   final String? description;
+  final bool critique;
   final String? forestName;
   final String? imageUrl;
   final String? supervisorComment;
@@ -109,6 +111,7 @@ class AlertModel {
         type: AlertType.depuis(j['type'] as String),
         status: AlertStatus.depuis(j['status'] as String),
         description: j['description'] as String?,
+        critique: j['is_critical'] as bool? ?? false,
         forestName: j['forest_name'] as String?,
         imageUrl: j['image_url'] as String?,
         supervisorComment: j['supervisor_comment'] as String?,

@@ -499,6 +499,96 @@ abstract class AppLocalizations {
   /// In fr, this message translates to:
   /// **'Chargement...'**
   String get loading;
+
+  /// No description provided for @createAlertCritical.
+  ///
+  /// In fr, this message translates to:
+  /// **'Incident critique'**
+  String get createAlertCritical;
+
+  /// No description provided for @createAlertCriticalSub.
+  ///
+  /// In fr, this message translates to:
+  /// **'Cochez si la situation nécessite une intervention urgente'**
+  String get createAlertCriticalSub;
+
+  /// No description provided for @alertCriticalBadge.
+  ///
+  /// In fr, this message translates to:
+  /// **'Critique'**
+  String get alertCriticalBadge;
+
+  /// No description provided for @navProfile.
+  ///
+  /// In fr, this message translates to:
+  /// **'Profil'**
+  String get navProfile;
+
+  /// No description provided for @profileRoleAgent.
+  ///
+  /// In fr, this message translates to:
+  /// **'Agent de terrain'**
+  String get profileRoleAgent;
+
+  /// No description provided for @profileContact.
+  ///
+  /// In fr, this message translates to:
+  /// **'Contact'**
+  String get profileContact;
+
+  /// No description provided for @profileEmail.
+  ///
+  /// In fr, this message translates to:
+  /// **'Email'**
+  String get profileEmail;
+
+  /// No description provided for @profilePhone.
+  ///
+  /// In fr, this message translates to:
+  /// **'Téléphone'**
+  String get profilePhone;
+
+  /// No description provided for @profileAssignment.
+  ///
+  /// In fr, this message translates to:
+  /// **'Affectation'**
+  String get profileAssignment;
+
+  /// No description provided for @profileForest.
+  ///
+  /// In fr, this message translates to:
+  /// **'Forêt'**
+  String get profileForest;
+
+  /// No description provided for @profileParcelle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Parcelle'**
+  String get profileParcelle;
+
+  /// No description provided for @profileSupervisor.
+  ///
+  /// In fr, this message translates to:
+  /// **'Superviseur'**
+  String get profileSupervisor;
+
+  /// No description provided for @profileSupervisorPhone.
+  ///
+  /// In fr, this message translates to:
+  /// **'Tél. superviseur'**
+  String get profileSupervisorPhone;
+
+  /// No description provided for @profileNotAssigned.
+  ///
+  /// In fr, this message translates to:
+  /// **'Vous n\'êtes affecté à aucune parcelle pour le moment.'**
+  String get profileNotAssigned;
+
+  /// No description provided for @profileLoadError.
+  ///
+  /// In fr, this message translates to:
+  /// **'Impossible de charger votre profil.'**
+  String get profileLoadError;
 }
 
 class _AppLocalizationsDelegate

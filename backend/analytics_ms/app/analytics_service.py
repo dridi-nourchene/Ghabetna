@@ -157,8 +157,19 @@ async def get_top_agents(db: AsyncSession, status: str, limit: int = 5) -> list[
     total_expr = func.count()
     match_expr = func.count(case((AlertFact.status == status, 1)))
 
+    # max() et non group_by sur source : un meme auteur ne doit produire
+    # qu'une ligne. Les rares signalements anterieurs a l'ajout du champ
+    # portent "agent" par defaut ; max() privilegie "citoyen" des qu'un seul
+    # signalement l'indique, ce qui donne le bon libelle.
+    source_expr = func.max(AlertFact.source)
+
     query = (
-        select(AlertFact.agent_id, match_expr.label("num"), total_expr.label("total"))
+        select(
+            AlertFact.agent_id,
+            match_expr.label("num"),
+            total_expr.label("total"),
+            source_expr.label("source"),
+        )
         .group_by(AlertFact.agent_id)
         .having(total_expr > 0)
     )
@@ -170,14 +181,22 @@ async def get_top_agents(db: AsyncSession, status: str, limit: int = 5) -> list[
     supervisor_cache: dict[str, dict] = {}
     results = []
 
-    for agent_id, num, total in rows:
+    for agent_id, num, total, source in rows:
         agent_id_s = str(agent_id)
         rate = round((num / total) * 100, 1) if total else 0.0
         user = users_map.get(agent_id_s, {})
 
+        # users_cache est l'annuaire du personnel : un citoyen n'y figure
+        # jamais. Son absence n'est donc pas une anomalie, contrairement a
+        # celle d'un agent — d'ou deux libelles de repli distincts.
+        nom = user.get("nom")
+        if not nom:
+            nom = "Citoyen" if source == "citoyen" else "Inconnu"
+
         item = {
             "agent_id": agent_id_s,
-            "nom":      user.get("nom") or "Inconnu",
+            "nom":      nom,
+            "source":   source,
             "rate":     rate,
         }
 

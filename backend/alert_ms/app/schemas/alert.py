@@ -15,6 +15,7 @@ class AlertCreate(BaseModel):
     incident_lng: Optional[float] = None
     agent_lat:    Optional[float] = None
     agent_lng:    Optional[float] = None
+    is_critical:  bool = False
 
 
 class AlertStatusUpdate(BaseModel):
@@ -46,6 +47,9 @@ class AlertDetailResponse(BaseModel):
     # 'agent' ou 'citoyen' — voir AlertSource. Distinct d'agent_id, qui
     # reste l'identifiant du créateur quel que soit son rôle.
     source: str = "agent"
+
+    # ── Criticité ──────────────────────────────────────
+    is_critical: bool = False
 
     # ── Agent émetteur ────────────────────────────────
     agent_nom:   Optional[str] = None
@@ -90,6 +94,7 @@ class AlertResponse(BaseModel):
     agent_lat:      Optional[float]
     agent_lng:      Optional[float]
     location_source:    LocationSource
+    is_critical:        bool = False
     image_url:          Optional[str]
     agent_id:           UUID
     forest_id:          UUID
@@ -107,6 +112,7 @@ class AlertMapPoint(BaseModel):
     type:            AlertType
     status:          AlertStatus
     source:          str = "agent"
+    is_critical:     bool = False
     incident_lat:    Optional[float]
     incident_lng:    Optional[float]
     location_source: LocationSource

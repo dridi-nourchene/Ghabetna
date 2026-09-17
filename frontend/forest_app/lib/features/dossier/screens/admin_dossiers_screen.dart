@@ -65,10 +65,9 @@ class _AdminDossiersScreenState extends ConsumerState<AdminDossiersScreen> {
   String  _recherche  = '';
   String? _specialite;
 
-  // Démarre sur la file de travail et non sur « tous ». Cet écran sert à
-  // TRAITER des dossiers : ce que l'admin veut voir en arrivant, ce sont
-  // ceux qui attendent une décision. Les autres restent à un clic.
-  String? _statut = 'en_attente';
+  // Démarre sur « tous les statuts ». Les dossiers en attente restent en
+  // tête de liste grâce au tri du provider.
+  String? _statut;
 
   @override
   void initState() {

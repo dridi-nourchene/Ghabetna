@@ -11,6 +11,7 @@ import '../data/alert_gps.dart';
 import '../data/alert_models.dart';
 import '../providers/alert_provider.dart';
 import 'widgets/forest_dropdown.dart';
+import 'widgets/interrupteur_critique.dart';
 import 'widgets/photo_picker.dart';
 import 'widgets/type_dropdown.dart';
 
@@ -32,6 +33,7 @@ class _SignalerScreenState extends ConsumerState<SignalerScreen> {
   ForestSimple? _foret;
   File? _photo;
   String? _infoGps;
+  bool _critique = false;
 
   @override
   void initState() {
@@ -90,6 +92,7 @@ class _SignalerScreenState extends ConsumerState<SignalerScreen> {
               ? null
               : _descriptionCtrl.text.trim(),
           photo: _photo,
+          critique: _critique,
         );
 
     if (ok && mounted) {
@@ -197,6 +200,11 @@ class _SignalerScreenState extends ConsumerState<SignalerScreen> {
                           ),
                         ),
                       ),
+                    ),
+                    const SizedBox(height: 20),
+                    InterrupteurCritique(
+                      valeur: _critique,
+                      onChange: (v) => setState(() => _critique = v),
                     ),
                     const SizedBox(height: 32),
                     BoutonPrincipal(

@@ -76,5 +76,22 @@
   "statusUpdated": "Statut mis à jour",
   "retry": "Réessayer",
   "cancel": "Annuler",
-  "loading": "Chargement..."
+  "loading": "Chargement...",
+
+  "createAlertCritical": "Incident critique",
+  "createAlertCriticalSub": "Cochez si la situation nécessite une intervention urgente",
+  "alertCriticalBadge": "Critique",
+
+  "navProfile": "Profil",
+  "profileRoleAgent": "Agent de terrain",
+  "profileContact": "Contact",
+  "profileEmail": "Email",
+  "profilePhone": "Téléphone",
+  "profileAssignment": "Affectation",
+  "profileForest": "Forêt",
+  "profileParcelle": "Parcelle",
+  "profileSupervisor": "Superviseur",
+  "profileSupervisorPhone": "Tél. superviseur",
+  "profileNotAssigned": "Vous n'êtes affecté à aucune parcelle pour le moment.",
+  "profileLoadError": "Impossible de charger votre profil."
 }

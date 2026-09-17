@@ -144,8 +144,16 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
       groupesApprox.putIfAbsent(point.forestId, () => []).add(point);
     }
 
+    // Les alertes critiques sont ajoutées en dernier : MarkerLayer dessine
+    // dans l'ordre de la liste, elles passent donc au-dessus des autres
+    // quand des marqueurs se chevauchent.
+    final pointsOrdonnes = [
+      ...alertState.points.where((p) => !p.isCritical),
+      ...alertState.points.where((p) => p.isCritical),
+    ];
+
     final alertMarkers = <Marker>[];
-    for (final point in alertState.points) {
+    for (final point in pointsOrdonnes) {
       int rang = 0, total = 1;
       if (!point.hasExactLocation) {
         final groupe = groupesApprox[point.forestId]!;
@@ -160,11 +168,18 @@ class _SupervisorMapScreenState extends ConsumerState<SupervisorMapScreen> {
         height: 44,
         child: GestureDetector(
           onTap: () => context.push('/supervisor/alert/${point.id}'),
-          child: _AlertTriangle(
-            type:          point.type,
-            status:        point.status,
-            isApproximate: !point.hasExactLocation,
-          ),
+          // Critique → cercle, sinon triangle : la forme distingue
+          // l'urgence d'un coup d'œil, même quand la couleur est la même.
+          child: point.isCritical
+              ? _AlertCircle(
+                  type:          point.type,
+                  isApproximate: !point.hasExactLocation,
+                )
+              : _AlertTriangle(
+                  type:          point.type,
+                  status:        point.status,
+                  isApproximate: !point.hasExactLocation,
+                ),
         ),
       ));
     }
@@ -328,6 +343,65 @@ class _AlertTriangle extends StatelessWidget {
         top: size * 0.15, left: 0, right: 0,
         child: Center(
           child: Text(type.emoji, style: const TextStyle(fontSize: 12)),
+        ),
+      ),
+      if (isApproximate)
+        Positioned(
+          top: -4, right: -4,
+          child: Container(
+            width: 14, height: 14,
+            decoration: BoxDecoration(
+              color:  const Color(0xFFFF8F00),
+              shape:  BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 1.5),
+            ),
+            child: const Center(
+              child: Text('~',
+                  style: TextStyle(
+                      fontSize:   8,
+                      color:      Colors.white,
+                      fontWeight: FontWeight.w700,
+                      height:     1)),
+            ),
+          ),
+        ),
+    ]);
+  }
+}
+
+/// Marqueur d'une alerte critique : cercle rouge foncé cerclé de blanc,
+/// avec un halo, pour qu'il ressorte parmi les triangles.
+class _AlertCircle extends StatelessWidget {
+  final AlertType type;
+  final bool      isApproximate;
+
+  const _AlertCircle({
+    required this.type,
+    required this.isApproximate,
+  });
+
+  static const couleur = Color(0xFFB71C1C);
+
+  @override
+  Widget build(BuildContext context) {
+    const size = 34.0;
+    return Stack(clipBehavior: Clip.none, children: [
+      Container(
+        width: size, height: size,
+        decoration: BoxDecoration(
+          color:  couleur,
+          shape:  BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 2.5),
+          boxShadow: [
+            BoxShadow(
+              color:        couleur.withOpacity(0.45),
+              blurRadius:   10,
+              spreadRadius: 3,
+            ),
+          ],
+        ),
+        child: Center(
+          child: Text(type.emoji, style: const TextStyle(fontSize: 14)),
         ),
       ),
       if (isApproximate)
@@ -520,6 +594,21 @@ class _Legend extends StatelessWidget {
             // rejetées en sont retirées côté serveur, la légende n'a donc
             // plus qu'un statut à distinguer.
             _LegendTriangle(color: const Color(0xFFD32F2F), label: 'Alerte en cours'),
+            const SizedBox(height: 4),
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              Container(
+                width: 14, height: 14,
+                margin: const EdgeInsets.symmetric(horizontal: 1),
+                decoration: BoxDecoration(
+                  color:  _AlertCircle.couleur,
+                  shape:  BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 1.5),
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Text('Alerte critique',
+                  style: TextStyle(fontSize: 10, color: AppColors.textPrimary)),
+            ]),
             const SizedBox(height: 4),
             Row(mainAxisSize: MainAxisSize.min, children: [
               Container(

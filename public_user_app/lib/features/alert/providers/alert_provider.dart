@@ -67,6 +67,7 @@ class SignalerNotifier extends StateNotifier<SignalerState> {
     required String forestId,
     String? description,
     File? photo,
+    bool critique = false,
   }) async {
     state = state.copyWith(
       envoiEnCours: true,
@@ -95,6 +96,7 @@ class SignalerNotifier extends StateNotifier<SignalerState> {
         agentLat: positionTelephone?.lat,
         agentLng: positionTelephone?.lng,
         photo: photo,
+        critique: critique,
       );
 
       state = state.copyWith(envoiEnCours: false, succes: true);

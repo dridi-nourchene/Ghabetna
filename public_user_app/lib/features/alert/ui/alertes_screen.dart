@@ -196,6 +196,7 @@ class _Carte extends StatelessWidget {
                     Expanded(
                       child: Text(
                         alerte.type.libelle,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           fontSize: 14.5,
                           fontWeight: FontWeight.w600,
@@ -203,6 +204,31 @@ class _Carte extends StatelessWidget {
                         ),
                       ),
                     ),
+                    if (alerte.critique) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFDE8E8),
+                          borderRadius: BorderRadius.circular(AppDims.info),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.warning_amber_rounded, size: 12, color: Color(0xFFE05555)),
+                            SizedBox(width: 3),
+                            Text(
+                              'Critique',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFFE05555),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                    ],
                     Container(
                       padding:
                           const EdgeInsets.symmetric(horizontal: 8, vertical: 3),

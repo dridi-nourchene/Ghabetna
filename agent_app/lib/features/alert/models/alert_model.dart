@@ -101,6 +101,7 @@ class AlertModel {
   final AlertType      type;
   final AlertStatus    status;
   final String?        description;
+  final bool           isCritical;
 
   // Localisation
   final double?        incidentLat;
@@ -134,6 +135,7 @@ class AlertModel {
     required this.type,
     required this.status,
     this.description,
+    this.isCritical = false,
     this.incidentLat,
     this.incidentLng,
     this.agentLat,
@@ -158,6 +160,7 @@ class AlertModel {
     type:             AlertType.fromString(j['type'] as String),
     status:           AlertStatus.fromString(j['status'] as String),
     description:      j['description'] as String?,
+    isCritical:       j['is_critical'] as bool? ?? false,
     incidentLat:      (j['incident_lat'] as num?)?.toDouble(),
     incidentLng:      (j['incident_lng'] as num?)?.toDouble(),
     agentLat:         (j['agent_lat']    as num?)?.toDouble(),

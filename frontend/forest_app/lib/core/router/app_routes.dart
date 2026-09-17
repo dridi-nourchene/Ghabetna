@@ -118,9 +118,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path:    '/admin/alerts',
             builder: (_, _) => const _PlaceholderScreen('Alertes'),
           ),
+          // Ancienne page vide : renvoie vers les rapports d'analytics_ms.
           GoRoute(
-            path:    '/admin/reports',
-            builder: (_, _) => const _PlaceholderScreen('Rapports'),
+            path:     '/admin/reports',
+            redirect: (_, _) => '/admin/analytics',
           ),
           GoRoute(
             path:    '/admin/settings',

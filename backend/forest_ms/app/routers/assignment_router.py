@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 
 from app.db.database import get_db
-from app.core.dependencies import require_admin, get_current_user_id
+from app.core.dependencies import require_admin, require_agent, get_current_user_id
 from app.services import assignment_service
 from app.schemas.assignment import (
     AssignSuperviseurRequest,
@@ -144,6 +144,21 @@ async def list_agents(
 ):
     """Retourne tous les agents actifs avec leur parcelle courante si affectés."""
     return await assignment_service.list_agents_with_status(db)
+
+
+@router.get(
+    "/api/assignments/me",
+    summary="Profil de l'agent connecté avec son affectation",
+)
+async def get_my_assignment(
+    db:       AsyncSession = Depends(get_db),
+    agent_id: UUID         = Depends(require_agent),
+):
+    """
+    Identité (depuis users_cache), parcelle et forêt affectées, et
+    superviseur de la forêt. Utilisé par l'écran Profil d'agent_app.
+    """
+    return await assignment_service.get_agent_profile(db, agent_id)
 
 
 @router.get(

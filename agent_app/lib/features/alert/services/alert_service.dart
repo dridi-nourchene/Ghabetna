@@ -135,14 +135,16 @@ class AlertService {
     double?            agentLat,
     double?            agentLng,
     File?              imageFile,
+    bool               isCritical = false,
   }) async {
     final headers = await _authHeaders();
     final uri     = Uri.parse('$_base/api/alerts/');
 
     final request = http.MultipartRequest('POST', uri)
       ..headers.addAll(headers)
-      ..fields['type']      = type.value
-      ..fields['forest_id'] = forestId;
+      ..fields['type']        = type.value
+      ..fields['forest_id']   = forestId
+      ..fields['is_critical'] = isCritical.toString();
 
     if (description  != null) request.fields['description']  = description;
     if (incidentLat  != null) request.fields['incident_lat'] = incidentLat.toString();

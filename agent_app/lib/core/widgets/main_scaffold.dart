@@ -5,7 +5,6 @@ import 'package:agent_app/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 import 'package:agent_app/core/theme/app_colors.dart';
 import 'package:agent_app/core/widgets/lang_toggle.dart';
-import 'package:agent_app/features/auth/providers/auth_provider.dart';
 
 class MainScaffold extends ConsumerWidget {
   final Widget child;
@@ -21,6 +20,7 @@ class MainScaffold extends ConsumerWidget {
     if (location.startsWith('/home'))         return 0;
     if (location.startsWith('/create-alert')) return 1;
     if (location.startsWith('/my-alerts'))    return 2;
+    if (location.startsWith('/profile'))      return 3;
     return 0;
   }
 
@@ -73,15 +73,13 @@ class MainScaffold extends ConsumerWidget {
       bottomNavigationBar: _GhabetnaBottomNav(
         selectedIndex: selectedIndex,
         l10n: l10n,
-        onTap: (index) async {
+        onTap: (index) {
           switch (index) {
             case 0: context.go('/home');         break;
             case 1: context.go('/create-alert'); break;
             case 2: context.go('/my-alerts');    break;
-            case 3:
-              await ref.read(authProvider.notifier).logout();
-              if (context.mounted) context.go('/login');
-              break;
+            // La déconnexion se fait maintenant depuis l'écran Profil.
+            case 3: context.go('/profile');      break;
           }
         },
       ),
@@ -139,52 +137,14 @@ class _GhabetnaBottomNav extends StatelessWidget {
                 onTap:    () => onTap(2),
               ),
               _NavItem(
-                icon:     Icons.logout_rounded,
-                label:    l10n.navLogout,
-                selected: false,
-                onTap:    () => _confirmLogout(context, l10n, () => onTap(3)),
-                isLogout: true,
+                icon:     Icons.person_outline_rounded,
+                label:    l10n.navProfile,
+                selected: selectedIndex == 3,
+                onTap:    () => onTap(3),
               ),
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  void _confirmLogout(
-      BuildContext context, AppLocalizations l10n, VoidCallback onConfirm) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(l10n.logoutTitle,
-            style: const TextStyle(
-                fontSize: 17, fontWeight: FontWeight.w700,
-                color: Color(0xFF1A2E1A))),
-        content: Text(l10n.logoutMessage,
-            style: const TextStyle(fontSize: 14, color: Color(0xFF4A6454))),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(l10n.logoutCancel,
-                style: const TextStyle(color: Color(0xFF8FA896))),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              onConfirm();
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF1A4731),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
-              elevation: 0,
-            ),
-            child: Text(l10n.logoutConfirm),
-          ),
-        ],
       ),
     );
   }
@@ -194,7 +154,6 @@ class _NavItem extends StatelessWidget {
   final IconData icon;
   final String   label;
   final bool     selected;
-  final bool     isLogout;
   final VoidCallback onTap;
 
   const _NavItem({
@@ -202,20 +161,14 @@ class _NavItem extends StatelessWidget {
     required this.label,
     required this.selected,
     required this.onTap,
-    this.isLogout = false,
   });
 
   @override
   Widget build(BuildContext context) {
     const activeColor   = Color(0xFF1A4731);
     const inactiveColor = Color(0xFF8FA896);
-    const logoutColor   = Color(0xFFE05C2A);
 
-    final color = isLogout
-        ? logoutColor
-        : selected
-            ? activeColor
-            : inactiveColor;
+    final color = selected ? activeColor : inactiveColor;
 
     return GestureDetector(
       onTap: onTap,

@@ -251,7 +251,7 @@ class _AdminCreateUserScreenState
                     Expanded(
                       child: _FormField(
                         label: 'Téléphone', controller: _phoneCtrl,
-                        hint: '06 XX XX XX XX', icon: Icons.phone_outlined,
+                        hint: '+216 XX XXX XXX', icon: Icons.phone_outlined,
                         keyboard: TextInputType.phone,
                       ),
                     ),

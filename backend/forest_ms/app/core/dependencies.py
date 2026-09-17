@@ -30,6 +30,21 @@ async def require_admin(
         raise HTTPException(status_code=401, detail="User ID invalide")
 
 
+async def require_agent(
+    x_user_id:   Optional[str] = Header(None),
+    x_user_role: Optional[str] = Header(None),
+) -> UUID:
+    """Vérifie que l'utilisateur est un agent. Retourne son UUID."""
+    if not x_user_id or not x_user_role:
+        raise HTTPException(status_code=401, detail="Non authentifié")
+    if x_user_role != "agent":
+        raise HTTPException(status_code=403, detail="Accès réservé aux agents")
+    try:
+        return UUID(x_user_id)
+    except ValueError:
+        raise HTTPException(status_code=401, detail="User ID invalide")
+
+
 async def require_admin_or_supervisor(
     x_user_id:   Optional[str] = Header(None),
     x_user_role: Optional[str] = Header(None),

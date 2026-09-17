@@ -32,6 +32,7 @@ class ForestTypeMatrixRow(BaseModel):
 class TopAgentRejection(BaseModel):
     agent_id:         str
     nom:              str
+    source:           str = "agent"
     rate:             float
     agent_phone:      Optional[str] = None
     agent_email:      Optional[str] = None
@@ -44,6 +45,7 @@ class TopAgentRejection(BaseModel):
 class TopAgentValidation(BaseModel):
     agent_id: str
     nom:      str
+    source:   str = "agent"
     rate:     float
 
 
